@@ -291,11 +291,18 @@ public partial class MainWindow : Window
 
     // --- loading ---------------------------------------------------------------------------
 
-    /// <summary>Open the given archives, replacing the whole view, and report any that failed.</summary>
-    private void LoadArchives(IReadOnlyList<string> paths)
+    /// <summary>
+    /// Open the given archives, replacing the whole view, and report any that failed.
+    /// <para>
+    /// Returns whether the view was actually replaced. False means the user cancelled at the unsaved-work
+    /// prompt, or nothing loaded — a caller that continues afterwards would be operating on the previous
+    /// archives while the user believes it declined the whole action.
+    /// </para>
+    /// </summary>
+    private bool LoadArchives(IReadOnlyList<string> paths)
     {
-        if (paths.Count == 0) return;
-        if (!ConfirmDiscardStagedEdits("opening another pkz")) return;
+        if (paths.Count == 0) return false;
+        if (!ConfirmDiscardStagedEdits("opening another pkz")) return false;
 
         var loaded = RunWithProgress("Loading", token =>
         {
@@ -314,7 +321,7 @@ public partial class MainWindow : Window
             return result;
         });
 
-        if (loaded is null) return; // cancelled or failed
+        if (loaded is null) return false; // cancelled or failed
 
         // A file that could not be read is skipped and reported; the rest stay loaded.
         if (loaded.Failures.Count > 0)
@@ -332,7 +339,7 @@ public partial class MainWindow : Window
         {
             UpdateCommandStates();
             UpdateStatus();
-            return;
+            return false;
         }
 
         // A fresh load starts with the tree collapsed and the list in PKZ order.
@@ -340,6 +347,7 @@ public partial class MainWindow : Window
         _sortColumn = SortColumn.None;
         _sortDescending = false;
         RebuildRows();
+        return true;
     }
 
     // --- the row set -----------------------------------------------------------------------
@@ -937,8 +945,18 @@ public partial class MainWindow : Window
     internal void LoadInitial(IReadOnlyList<string> paths)
     {
         if (paths.Count == 0) return;
+        UiTestLoadInitialReport(paths);
+    }
 
-        _workspace.Load(paths, _settings.ResolveOodleDll());
+    /// <summary>
+    /// The startup load, returning what happened so a check can confirm a bad file is reported rather
+    /// than silently producing an empty window.
+    /// </summary>
+    internal PkzWorkspace.LoadResult UiTestLoadInitialReport(IReadOnlyList<string> paths)
+    {
+        if (paths.Count == 0) return new PkzWorkspace.LoadResult(0, 0, Array.Empty<(string, string)>());
+
+        var result = _workspace.Load(paths, _settings.ResolveOodleDll());
         _expanded.Clear();
 
         // Open the top-level folders so a preloaded session shows real content rather than a single
@@ -950,6 +968,54 @@ public partial class MainWindow : Window
 
         RebuildRows();
         UpdateStatus();
+
+        // A file that would not load is reported here rather than swallowed. This path is what
+        // double-clicking a .pkz uses, so silence would mean opening a corrupt archive showed an empty
+        // window with nothing to explain it.
+        if (result.Failures.Count > 0 && !_headless) ReportLoadFailures(result);
+
+        return result;
+    }
+
+    /// <summary>
+    /// Report archives that would not load. Shown after the window is visible, because a prompt raised
+    /// from the constructor would appear before the window it belongs to.
+    /// </summary>
+    /// <summary>
+    /// How many modal prompts this window has raised, and what the last one said. The load-failure
+    /// report is a modal dialog, so who it is shown to cannot be observed from the return value alone —
+    /// and a prompt in a headless run is the failure this guards against.
+    /// </summary>
+    internal int UiTestPromptCount { get; private set; }
+
+    /// <summary>The text of the last prompt, or empty.</summary>
+    internal string UiTestLastPrompt { get; private set; } = string.Empty;
+
+    /// <summary>
+    /// Ask whether the failures should be reported now. The real check is whether a prompt would be
+    /// raised, but a prompt cannot be shown in a headless run, so this reports the decision instead.
+    /// </summary>
+    internal bool UiTestWouldReportFailures(PkzWorkspace.LoadResult result) =>
+        !_headless && result.Failures.Count > 0;
+
+    private void ReportLoadFailures(PkzWorkspace.LoadResult result)
+    {
+        void Report()
+        {
+            var detail = string.Join("\n\n", result.Failures.Select(f => $"{Path.GetFileName(f.Path)}\n{f.Error}"));
+
+            UiTestPromptCount++;
+            UiTestLastPrompt = result.Loaded == 0
+                ? $"Could not load:\n\n{detail}"
+                : $"{result.Loaded} pkz file(s) loaded.\n\nSkipped {result.Failed}:\n\n{detail}";
+
+            MessageBox.Show(this, UiTestLastPrompt,
+                result.Loaded == 0 ? "Could not load" : "Some files were skipped",
+                MessageBoxButton.OK, result.Loaded == 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+        }
+
+        if (IsLoaded) Report();
+        else Loaded += (_, _) => Report();
     }
 
     /// <summary>Kept for the smoke checks, which call this by name.</summary>

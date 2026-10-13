@@ -42,18 +42,30 @@ public partial class App : Application
             // decides when the run is over, and every headless path ends in Shutdown(code).
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
+            var args = Normalize(e.Args);
+
             // --show opens the shell with archives preloaded, so the GUI can be driven and screenshotted
             // from a script without automating the Open dialog.
-            int show = Array.FindIndex(e.Args, a => string.Equals(a, "--show", StringComparison.OrdinalIgnoreCase));
+            int show = Array.FindIndex(args, a => string.Equals(a, "--show", StringComparison.OrdinalIgnoreCase));
 
             // Explorer passes a bare file path when a .pkz is opened by double-click, and the shell is
-            // registered for the extension. That is not a command line, so it must open the GUI with the
-            // file loaded. Treating it as one made double-clicking a pkz print "no operation flag was
-            // given" and exit 2 instead of opening anything.
-            var dropped = e.Args.Where(a => !a.StartsWith('-') && File.Exists(a)).ToList();
-            bool looksLikeACommandLine = e.Args.Any(a => a.StartsWith('-'));
+            // registered for the extension. That is not a command line, so it opens the GUI with the file
+            // loaded.
+            //
+            // A bare path is never a valid command line — every operation needs a flag — so the two can
+            // only be told apart by how the process was started. Without that, a script that forgot its
+            // flag would wait forever on a window instead of failing, which is worse than the usage error
+            // it used to get.
+            bool wasLaunchedByTheShell = WasStartedByTheShell();
 
-            if (show >= 0 || (dropped.Count > 0 && !looksLikeACommandLine))
+            bool opensInGui = show < 0
+                              && wasLaunchedByTheShell
+                              && args.Length == 1
+                              && !args[0].StartsWith('-')
+                              && args[0].EndsWith(".pkz", StringComparison.OrdinalIgnoreCase)
+                              && File.Exists(args[0]);
+
+            if (show >= 0 || opensInGui)
             {
                 // Interactive despite having arguments, so it takes the GUI's shutdown behaviour:
                 // closing the window must end the process.
@@ -62,9 +74,11 @@ public partial class App : Application
                 base.OnStartup(e);
                 ThemeManager.Initialize(Settings.Theme);
 
+                // A path the parser would accept: no dash, and present on disk. CliParser treats a lone
+                // "-" as a path, so that rule is shared here rather than guessed at again.
                 var toOpen = show >= 0
-                    ? e.Args[(show + 1)..].Where(a => !a.StartsWith('-') && File.Exists(a)).ToList()
-                    : dropped;
+                    ? args[(show + 1)..].Where(IsPath).ToList()
+                    : new List<string> { args[0] };
 
                 var shell = new MainWindow();
                 MainWindow = shell;
@@ -73,7 +87,7 @@ public partial class App : Application
                 return;
             }
 
-            Shutdown(RunHeadless(e.Args));
+            Shutdown(RunHeadless(args));
             return;
         }
 
@@ -86,6 +100,114 @@ public partial class App : Application
         MainWindow = window;
         window.Show();
     }
+
+    /// <summary>
+    /// Whether this process was started by the Windows shell rather than by a command line.
+    /// <para>
+    /// This is what tells a double-click apart from a typed command. The arguments are identical either
+    /// way, and a console check does not work: a GUI-subsystem executable launched from a command prompt
+    /// has no console of its own, so GetConsoleWindow returns zero in both cases. The parent process
+    /// does differ, and that is what is compared here — explorer.exe for a shell launch, a shell or
+    /// script host otherwise.
+    /// </para>
+    /// </summary>
+    private static bool WasStartedByTheShell()
+    {
+        try
+        {
+            uint parent = ParentProcessId();
+            if (parent == 0) return false;
+
+            using var process = System.Diagnostics.Process.GetProcessById((int)parent);
+            return string.Equals(process.ProcessName, "explorer", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception)
+        {
+            // A parent that has already exited, or a denied query: treat it as a command line, which is
+            // the behaviour that reports a usage error rather than opening a window.
+            return false;
+        }
+    }
+
+    /// <summary>The parent process id, from the process snapshot.</summary>
+    private static uint ParentProcessId()
+    {
+        var entry = new ProcessEntry32 { Size = (uint)System.Runtime.InteropServices.Marshal.SizeOf<ProcessEntry32>() };
+        IntPtr snapshot = CreateToolhelp32Snapshot(0x00000002 /* TH32CS_SNAPPROCESS */, 0);
+        if (snapshot == IntPtr.Zero || snapshot == new IntPtr(-1)) return 0;
+
+        try
+        {
+            if (!Process32First(snapshot, ref entry)) return 0;
+
+            uint me = (uint)Environment.ProcessId;
+            do
+            {
+                if (entry.ProcessId == me) return entry.ParentProcessId;
+            }
+            while (Process32Next(snapshot, ref entry));
+
+            return 0;
+        }
+        finally
+        {
+            CloseHandle(snapshot);
+        }
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private struct ProcessEntry32
+    {
+        public uint Size;
+        public uint Usage;
+        public uint ProcessId;
+        public IntPtr DefaultHeapId;
+        public uint ModuleId;
+        public uint Threads;
+        public uint ParentProcessId;
+        public int PriorityClassBase;
+        public uint Flags;
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 260)]
+        public string ExeFile;
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr CreateToolhelp32Snapshot(uint flags, uint processId);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool Process32First(IntPtr snapshot, ref ProcessEntry32 entry);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool Process32Next(IntPtr snapshot, ref ProcessEntry32 entry);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr handle);
+
+    /// <summary>
+    /// The raw arguments with the quoting Windows may leave in place removed.
+    /// <para>
+    /// A file association is written as <c>"%1"</c>. Windows normally strips those quotes itself, but an
+    /// association written as <c>\"%1\"</c> — which a third-party installer or a hand-edited registry key
+    /// can produce — passes the quotes through as part of the value. Without this, such a path fails every
+    /// File.Exists test and the original "no operation flag was given" failure comes straight back.
+    /// </para>
+    /// </summary>
+    private static string[] Normalize(string[] args)
+    {
+        var cleaned = new string[args.Length];
+        for (int i = 0; i < args.Length; i++) cleaned[i] = args[i].Trim('"');
+        return cleaned;
+    }
+
+    /// <summary>
+    /// Whether an argument is a path rather than a flag. This mirrors
+    /// <see cref="CliParser"/>'s rule that a lone <c>-</c> is a path, so the two cannot disagree about
+    /// what a given argument means.
+    /// </summary>
+    private static bool IsPath(string arg) => !arg.StartsWith('-') || arg == "-";
 
     /// <summary>
     /// Run the command line. <c>--help</c> prints the usage and succeeds; a usage error prints the usage
@@ -179,6 +301,11 @@ public partial class App : Application
                 return DialogMeasure.CheckMonitorHeight(console.Out);
             }
 
+            if (args.Any(a => string.Equals(a, "--check-badload", StringComparison.OrdinalIgnoreCase)))
+            {
+                ThemeManager.Initialize(Settings.Theme);
+                return DialogMeasure.CheckBadArchiveIsReported(console.Out);
+            }
             if (args.Any(a => string.Equals(a, "--check-drop", StringComparison.OrdinalIgnoreCase)))
             {
                 ThemeManager.Initialize(Settings.Theme);

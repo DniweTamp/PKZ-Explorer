@@ -514,6 +514,45 @@ internal static class DialogMeasure
     }
 
     /// <summary>
+    /// Check that opening something that is not a pkz reports it rather than showing an empty window.
+    /// <para>
+    /// Double-clicking a corrupt archive used to open a window saying "no pkz loaded" with nothing to
+    /// explain it, because the startup load path discarded the failures the workspace collected.
+    /// </para>
+    /// </summary>
+    internal static int CheckBadArchiveIsReported(Action<string> log)
+    {
+        string bad = Path.Combine(Path.GetTempPath(), "pkztool_badload_" + Guid.NewGuid().ToString("N") + ".pkz");
+        File.WriteAllBytes(bad, new byte[] { 1, 2, 3, 4 });
+
+        try
+        {
+            var window = HeadlessMainWindow(1240, 820, offScreen: true);
+            window.Show();
+            window.UpdateLayout();
+
+            // The check runs headless, so the prompt must not actually be raised: what is verified is
+            // that the failure is collected and handed to the reporting path, not discarded.
+            var result = window.UiTestLoadInitialReport(new[] { bad });
+            window.UpdateLayout();
+
+            bool reported = result.Failures.Count > 0 && result.Loaded == 0;
+            window.Close();
+
+            log($"loading a 4-byte file: loaded={result.Loaded} failed={result.Failed}");
+            if (result.Failures.Count > 0) log($"reported: {result.Failures[0].Error}");
+            log(reported
+                ? "a file that is not a pkz is reported rather than silently ignored"
+                : "a file that is not a pkz was loaded without any failure being recorded");
+            return reported ? 0 : 1;
+        }
+        finally
+        {
+            try { File.Delete(bad); } catch (IOException) { }
+        }
+    }
+
+    /// <summary>
     /// Check the main window's layout at several sizes: the list must fill the panel, the empty message
     /// must be centred in it, and the columns must span it without overflowing into a horizontal
     /// scrollbar. Each of those was wrong at some point — the list filled half the window and the

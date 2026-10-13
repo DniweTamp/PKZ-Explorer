@@ -315,6 +315,10 @@ wrong.
 has a working default and cancel button — the last of these because wrapping a dialog's content in a
 scroll viewer could quietly break Enter and Escape.
 
+`--check-badload` confirms that loading something which is not a pkz is reported rather than
+leaving an empty window with nothing to explain it — the failure mode a double-click on a
+corrupt file used to produce.
+
 `--check-drop` confirms every region of the window accepts a file drop — the list, the empty area,
 the toolbar, the status bar — and that dropping a pkz with none loaded opens it.
 
@@ -359,9 +363,15 @@ and the clipped row was always the buttons.
 ### Open a pkz by double-clicking it
 
 Double-clicking a `.pkz` opens the GUI with it loaded, and so does dropping one anywhere on the
-window. Both pass a plain file path, which is not a command line, so the app tells the two apart: an
-argument that is just an existing file opens the shell, while anything starting with `-` is a CLI
-operation and runs headless.
+window. Both pass a plain file path, which is not a command line.
+
+The two are told apart by how the process was started, not by its arguments — those are identical
+either way. A shell launch has `explorer.exe` as its parent and opens the GUI; anything started from
+a prompt or a script does not, and gets the usual headless behaviour. That matters because a bare
+path is never a valid command line: every operation needs a flag, so without the distinction a shell
+script that forgot its flag would wait forever on a window instead of failing with exit 2. A console
+check cannot be used for this, since a GUI-subsystem executable has no console of its own even when
+launched from a prompt.
 
 To make Windows offer the app for `.pkz` files, associate the extension with the executable — for the
 current user only, which needs no administrator:

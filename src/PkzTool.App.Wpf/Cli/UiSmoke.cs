@@ -175,6 +175,7 @@ internal static class UiSmoke
                      ("the trailing column settles", DialogMeasure.CheckStretchSettles),
                      ("the dialog height cap uses the right monitor", DialogMeasure.CheckMonitorHeight),
                      ("a dropped pkz is opened", DialogMeasure.CheckDroppingAPkzOpensIt),
+                     ("a bad archive is reported", DialogMeasure.CheckBadArchiveIsReported),
                  })
         {
             var lines = new List<string>();

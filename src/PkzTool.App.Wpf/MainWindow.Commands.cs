@@ -814,7 +814,10 @@ public partial class MainWindow
         if (archives.Count > 0)
         {
             // Opening replaces the view, so it asks about staged work first, exactly as File > Open does.
-            LoadArchives(archives);
+            // A cancelled prompt means the user declined the whole action, so nothing else in this drop
+            // may proceed: the loose files would otherwise be added to the archives they just chose not
+            // to replace.
+            if (!LoadArchives(archives)) return;
         }
 
         if (content.Count == 0) return;
