@@ -174,6 +174,12 @@ must be written with — so the label can never disagree with the payload.
 * Staged rows are marked with `*` and tinted; the window title carries a `*` too.
 * Column widths start fixed, are resizable, and are remembered in the settings file.
 
+### Toolbar
+
+**Open**, **Save**, a path filter, and the theme toggle. Nothing else: every other action is on the
+Edit menu and the list's context menu, where the entries can be named precisely ("Extract selected"
+and "Extract all" rather than a bare "Extract") and can be disabled when they do not apply.
+
 ### Context menu, editing, drag and drop
 
 | Action | Rules |

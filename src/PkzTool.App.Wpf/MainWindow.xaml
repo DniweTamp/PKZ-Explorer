@@ -120,13 +120,10 @@
                             <TextBlock Text="Save" Margin="7,0,0,0" />
                         </StackPanel>
                     </Button>
-                    <Button Style="{StaticResource ToolbarButton}" Click="OnExtractSelected"
-                            ToolTip="Extract the selected entries">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Style="{StaticResource IconText}" Text="&#xE896;" />
-                            <TextBlock Text="Extract" Margin="7,0,0,0" />
-                        </StackPanel>
-                    </Button>
+                    <!-- No Extract button. A bare "Extract" is ambiguous next to "Extract selected" and
+                         "Extract all", it silently did nothing with an empty selection, and both of those
+                         menu entries already carry it (Edit menu and the list's context menu). The space
+                         it occupied is absorbed by the search box, which fills column 1. -->
                 </StackPanel>
 
                 <!-- Search: filters the visible list without touching the tree's stored order.
