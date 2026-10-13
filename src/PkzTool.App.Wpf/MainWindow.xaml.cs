@@ -49,7 +49,8 @@ public partial class MainWindow : Window
     private double _preferredName;
     private double _preferredSize;
     private double _preferredFormat;
-    private double _preferredCompression;
+    /// <summary>The width the user dragged the trailing column to, or null to fill the space.</summary>
+    private double? _draggedCompression;
 
     /// <summary>The four sortable columns.</summary>
     internal enum SortColumn
@@ -93,6 +94,12 @@ public partial class MainWindow : Window
         // list changes size or the scrollbar appears and disappears.
         FileList.SizeChanged += (_, _) => StretchLastColumn();
         FileList.LayoutUpdated += (_, _) => StretchLastColumn();
+
+        // A GridView header's resize grip is a Thumb, and its DragCompleted is the moment the user's
+        // width is final. The event bubbles, so it is caught here rather than needing a handler per
+        // column.
+        FileList.AddHandler(System.Windows.Controls.Primitives.Thumb.DragCompletedEvent,
+            new System.Windows.Controls.Primitives.DragCompletedEventHandler(OnColumnHeaderDragCompleted));
         Closing += OnClosing;
         Closed += (_, _) => ThemeManager.Changed -= OnThemeChanged;
     }
@@ -104,25 +111,57 @@ public partial class MainWindow : Window
         _preferredName = Math.Max(120, _settings.ColumnNameWidth);
         _preferredSize = Math.Max(60, _settings.ColumnSizeWidth);
         _preferredFormat = Math.Max(50, _settings.ColumnFormatWidth);
-        _preferredCompression = Math.Max(70, _settings.ColumnCompressionWidth);
+
+        // The trailing column has no fixed width to remember: it fills whatever the others leave. What
+        // is remembered is a width the user dragged it to; null means "no drag, just fill". Treating the
+        // stored default as a real width was a bug: it silently capped the fill, leaving the columns
+        // short of the list's edge on a wide window.
+        _draggedCompression = _settings.ColumnCompressionWidth > 0
+            ? Math.Max(70, _settings.ColumnCompressionWidth)
+            : null;
 
         ColumnName.Width = _preferredName;
         ColumnSize.Width = _preferredSize;
         ColumnFormat.Width = _preferredFormat;
-        ColumnCompression.Width = _preferredCompression;
+        ColumnCompression.Width = _draggedCompression ?? 120;
     }
+
+    /// <summary>
+    /// Simulate the user dragging the trailing column wider, so a check can confirm the drag survives the
+    /// fill that runs on the next layout pass. Before the floor was kept, the width snapped straight back
+    /// and the column was effectively unresizable.
+    /// </summary>
+    internal void UiTestDragCompressionColumn(double width)
+    {
+        ColumnCompression.Width = width;
+        RememberCompressionDrag();
+    }
+
+    /// <summary>
+    /// How many times <see cref="StretchLastColumn"/> has run. Diagnostic only: it is what shows whether
+    /// wiring the stretch to <c>LayoutUpdated</c> settles or spins.
+    /// </summary>
+    internal int UiTestStretchCount => _stretchCount;
+
+    /// <summary>The trailing column's current width, for the settle check to report.</summary>
+    internal double UiTestCompressionColumnWidth() => ColumnCompression.Width;
+
+    private int _stretchCount;
 
     /// <summary>
     /// Give the last column whatever width the other three leave, so the grid's columns span the list
     /// rather than stopping part way across and leaving a band of empty space to their right.
     /// <para>
-    /// The user's remembered widths are the basis, not the result: this widens only the trailing column,
-    /// so dragging a column edge still means what it did and the stored widths stay meaningful on a
-    /// window of any size.
+    /// The trailing column has two jobs that pull against each other: it absorbs the leftover width, and
+    /// it is one the user can drag. Overwriting it outright made the drag do nothing — the edge would be
+    /// pulled and then snap back on the next layout pass. The user's width is therefore kept as a
+    /// <em>minimum</em>: dragging wider is honoured, and the fill only ever widens it further.
     /// </para>
     /// </summary>
     private void StretchLastColumn()
     {
+        _stretchCount++;
+
         if (_preferredName <= 0) return;   // widths not restored yet
         if (FileList.ActualWidth <= 0) return;
 
@@ -139,9 +178,33 @@ public partial class MainWindow : Window
         // padding of its own, so columns that sum to precisely the presenter width still overflow and
         // raise a horizontal scrollbar; this keeps the trailing column inside that allowance.
         const double GridSlack = 12;
-        double last = Math.Max(70, available - fixedWidth - GridSlack);
+        double fill = available - fixedWidth - GridSlack;
 
-        if (Math.Abs(ColumnCompression.Width - last) > 0.5) ColumnCompression.Width = last;
+        // The trailing column is filled to the edge, so it has no natural reason to be narrower. It is
+        // narrowed only when the user drags it narrower, and that choice is honoured until it is given
+        // up. A width wider than the space available is reduced, so a wide drag cannot raise the
+        // horizontal scrollbar this exists to prevent.
+        //
+        // Clamped at the bottom by the floor, never by the fill: a window too narrow to hold the three
+        // fixed columns makes fill negative, and handing that to Width throws. The floor keeps it legal
+        // and lets the list scroll instead.
+        double target = Math.Min(_draggedCompression ?? double.MaxValue, Math.Max(70, fill));
+
+        if (Math.Abs(ColumnCompression.Width - target) > 0.5) ColumnCompression.Width = target;
+    }
+
+    /// <summary>
+    /// <summary>
+    /// Record a user drag of the trailing column, so the fill respects it instead of overwriting it.
+    /// Called once the drag finishes, which is when the width is the user's choice rather than a value
+    /// the fill is part way through computing.
+    /// </summary>
+    private void RememberCompressionDrag()
+    {
+        if (double.IsNaN(ColumnCompression.Width) || ColumnCompression.Width <= 0) return;
+
+        _draggedCompression = Math.Max(70, ColumnCompression.Width);
+        _settings.ColumnCompressionWidth = _draggedCompression.Value;
     }
 
     /// <summary>
@@ -164,13 +227,27 @@ public partial class MainWindow : Window
 
     private void RememberColumnWidths()
     {
-        // The Compression column is stretched to fill, so its live width is not what the user chose;
-        // remembering it would make the layout drift wider on every save. The preferred value is kept
-        // instead, and only the three fixed columns are read back from the grid.
         if (!double.IsNaN(ColumnName.Width)) _settings.ColumnNameWidth = ColumnName.Width;
         if (!double.IsNaN(ColumnSize.Width)) _settings.ColumnSizeWidth = ColumnSize.Width;
         if (!double.IsNaN(ColumnFormat.Width)) _settings.ColumnFormatWidth = ColumnFormat.Width;
-        if (_preferredCompression > 0) _settings.ColumnCompressionWidth = _preferredCompression;
+
+        // The Compression column is filled to whatever is left, so its live width usually is not the
+        // user's choice. What they dragged is captured separately by RememberCompressionDrag, and that
+        // is the value worth keeping, so it is written straight through here.
+        if (_draggedCompression is { } dragged) _settings.ColumnCompressionWidth = dragged;
+    }
+
+    /// <summary>
+    /// Catch the end of a column-header drag, so a width the user chose for the trailing column is kept
+    /// as its minimum instead of being overwritten by the fill on the next layout pass.
+    /// </summary>
+    private void OnColumnHeaderDragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
+    {
+        if (e.OriginalSource is System.Windows.Controls.Primitives.Thumb thumb
+            && ReferenceEquals(thumb.TemplatedParent, ColumnCompression.Header))
+        {
+            RememberCompressionDrag();
+        }
     }
 
     private void RestoreWindowState()
@@ -887,6 +964,15 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// How far the columns exceed the list's viewport. Positive means a horizontal scrollbar appears.
+    /// Exposed as a number rather than only as text, so a check cannot silently read a wrong value from
+    /// a log line whose format changed.
+    /// </summary>
+    internal double UiTestColumnOverflow() =>
+        ColumnName.Width + ColumnSize.Width + ColumnFormat.Width + ColumnCompression.Width
+        - RowViewportWidth(FileList);
+
+    /// <summary>
     /// The numbers the column-stretch maths runs on, so a horizontal scrollbar can be diagnosed from
     /// measurements rather than guessed at.
     /// </summary>
@@ -900,7 +986,7 @@ public partial class MainWindow : Window
         yield return $"col format            {ColumnFormat.Width,6:0}";
         yield return $"col compression       {ColumnCompression.Width,6:0}";
         yield return $"columns total         {ColumnName.Width + ColumnSize.Width + ColumnFormat.Width + ColumnCompression.Width,6:0}";
-        yield return $"overflow              {ColumnName.Width + ColumnSize.Width + ColumnFormat.Width + ColumnCompression.Width - viewport,6:0}";
+        yield return $"overflow              {UiTestColumnOverflow(),6:0}";
     }
 
     /// <summary>

@@ -171,6 +171,12 @@ oo2core*.dylib
 /_scratch/
 /_shots/
 
+# --capture-main and --capture-dialog write PNGs wherever they are asked to,
+# which is usually the repository root. One of these was committed by accident;
+# no image in this project is a source file, so none of them belong in the tree.
+/*.png
+/captures/
+
 # ---------------------------------------------------------------------------
 # OS junk
 # ---------------------------------------------------------------------------

@@ -165,7 +165,36 @@ internal static class UiSmoke
             }
         }
 
+        // Dialog sizing and dismissal. These are what a user notices first and a test cannot see: a
+        // dialog too short for its own buttons, or one whose Enter and Escape stopped working after its
+        // content was wrapped in a scroll viewer.
+        foreach (var (label, check) in new (string, Func<Action<string>, int>)[]
+                 {
+                     ("dialogs size to their content", DialogMeasure.CheckDialogSizes),
+                     ("dialogs keep their default and cancel buttons", DialogMeasure.CheckDialogButtons),
+                     ("the trailing column settles", DialogMeasure.CheckStretchSettles),
+                     ("the dialog height cap uses the right monitor", DialogMeasure.CheckMonitorHeight),
+                 })
+        {
+            var lines = new List<string>();
+            int result = check(lines.Add);
+            foreach (var line in lines) log($"     {line}");
+            checks++;
+            if (result == 0)
+            {
+                log($"ok   {label}");
+            }
+            else
+            {
+                problems.Add($"{label}: check failed");
+            }
+        }
+
         window?.Close();
+
+        // Delete the picker's fixture archive, which is written to the temp folder to give that dialog
+        // real items. Done after every dialog has closed, because the picker holds it open until then.
+        CleanUpFixture();
 
         foreach (var problem in problems) log($"FAIL {problem}");
         log(problems.Count == 0
@@ -226,20 +255,26 @@ internal static class UiSmoke
     /// A throwaway loaded workspace for the pkz picker. It reads a tiny archive written in the temp
     /// folder, so the dialog's list has real items without depending on a game install. The workspace
     /// is kept alive in a static field because the picker holds the archives it is given.
+    /// <para>
+    /// The archive is written once and deleted by <see cref="CleanUpFixture"/>. It used to be written
+    /// on every call and never removed, which left a temp file behind on every run.
+    /// </para>
     /// </summary>
     private static List<Core.Workspace.LoadedArchive> WorkspaceFixture()
     {
+        if (_smokeWorkspace is not null) return _smokeWorkspace.Archives.ToList();
+
         try
         {
-            string path = Path.Combine(Path.GetTempPath(), "pkztool_uismoke_" + Guid.NewGuid().ToString("N") + ".pkz");
-            Core.Archives.PkzWriter.WriteFile(path, new[]
+            _smokePath = Path.Combine(Path.GetTempPath(), "pkztool_uismoke_" + Guid.NewGuid().ToString("N") + ".pkz");
+            Core.Archives.PkzWriter.WriteFile(_smokePath, new[]
             {
                 new Core.Archives.PkzFile("pl/pl0000.dat", "smoke"u8.ToArray(),
                     Core.Archives.EntryCompression.None, 0),
             }, oodleDllPath: null);
 
             var workspace = new Core.Workspace.PkzWorkspace();
-            workspace.Load(new[] { path });
+            workspace.Load(new[] { _smokePath });
             _smokeWorkspace = workspace;
             return workspace.Archives.ToList();
         }
@@ -250,6 +285,25 @@ internal static class UiSmoke
         }
     }
 
+    /// <summary>
+    /// Close and delete the picker's fixture archive. The workspace's file handle is released first,
+    /// because Windows will not delete a file this process still holds open.
+    /// </summary>
+    private static void CleanUpFixture()
+    {
+        _smokeWorkspace?.Dispose();
+        _smokeWorkspace = null;
+
+        if (_smokePath is null) return;
+        try { File.Delete(_smokePath); }
+        catch (IOException) { /* Best effort: a failed cleanup must not fail the run. */ }
+        catch (UnauthorizedAccessException) { }
+        _smokePath = null;
+    }
+
     /// <summary>Keeps the smoke-test workspace's archives open while the picker dialog uses them.</summary>
     private static Core.Workspace.PkzWorkspace? _smokeWorkspace;
+
+    /// <summary>The fixture archive's path, so it can be deleted once the dialogs are done with it.</summary>
+    private static string? _smokePath;
 }

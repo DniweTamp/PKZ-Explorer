@@ -305,10 +305,19 @@ panel, whether the empty message is centred in it, and whether the columns fit w
 scrollbar. `--main-layout [pkz]` prints the same geometry as raw numbers, for when a figure looks
 wrong.
 
+`--check-dialog-buttons` checks that every dialog fits the screen, can reach its button row, and still
+has a working default and cancel button — the last of these because wrapping a dialog's content in a
+scroll viewer could quietly break Enter and Escape.
+
+`--check-stretch` counts how many times the trailing column is re-sized over a fixed number of idle
+layout passes. That stretch is driven by `LayoutUpdated`, which fires on every pass, so a change that
+never converged would spin the UI thread; the check proves it settles.
+
 `--capture-main [pkz] <out.png>` renders the main window, and `--capture-dialog <name> <out.png>` one
 dialog. Names for the latter: `about`, `compression`, `overwrite`, `textprompt`, `oodle`, `pkzpick`,
 `settings`. These exist because a layout can pass every assertion and still look wrong: the About
-dialog's button check passed while a screenshot showed the button clipped.
+dialog's button check passed while a screenshot showed the button clipped. Captured PNGs are
+git-ignored, since no image in this project is a source file.
 
 ### Main window layout
 
@@ -317,17 +326,18 @@ The list and the empty-state message share one `Grid` cell. They must not be sib
 was sized to its own content — it covered barely half the window — and the message centred within
 that half rather than the window.
 
-The four columns are fixed widths, and the trailing one is stretched to fill whatever the others
-leave, so the columns span the list instead of stopping part way across. The user's remembered
-widths are the *basis* for that, not the result, so dragging a column edge still means what it did.
+The four columns are fixed widths, and the trailing one is filled to whatever the others leave, so
+the columns span the list instead of stopping part way across. That column can also be dragged: a
+width the user drags is kept and honoured, and only ever reduced when it would not otherwise fit, so
+dragging it narrower works and dragging it wider cannot raise a horizontal scrollbar.
 
 ### Dialog sizing
 
 Dialogs are not fixed-size boxes. Every one is resizable, and `ThemedDialog` grows the window to the
-height its content actually needs on first show, capped at 92% of the working area so it can never
-run off the bottom of the screen; anything beyond that scrolls. A dialog that manages its own layout
-(the About box, whose body scrolls between a fixed header and a fixed button row) opts out with
-`SizesItself`.
+height its content actually needs on first show, capped at 92% of the working area of the monitor the
+dialog is on — the owner's monitor, not the primary one — so it can never run off the bottom of the
+screen; anything beyond that scrolls. A dialog that manages its own layout (the About box, whose body
+scrolls between a fixed header and a fixed button row) opts out with `SizesItself`.
 
 This exists because three dialogs shipped taller than their window — the Settings dialog by 180px —
 and the clipped row was always the buttons.

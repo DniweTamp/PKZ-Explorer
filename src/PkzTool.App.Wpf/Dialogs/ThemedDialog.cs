@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using PkzTool.App.Wpf.Theming;
@@ -84,9 +85,9 @@ public class ThemedDialog : Window
         // working area so it cannot run off the bottom of the screen.
         if (SizesItself)
         {
-            double room = SystemParameters.WorkArea.Height * MaxHeightFraction;
+            double room = WorkingAreaHeight();
             if (Height > room) Height = room;
-            if (WindowStartupLocation == WindowStartupLocation.CenterOwner) CentreOnOwner();
+            CentreIfNeeded();
             return;
         }
 
@@ -111,25 +112,87 @@ public class ThemedDialog : Window
         content.Measure(new Size(width, double.PositiveInfinity));
         double wantedContent = content.DesiredSize.Height;
 
-        // Everything the window adds around its content: the caption bar and the resize border. Taken
-        // from the window metrics rather than from the current layout, because the content on screen is
-        // already constrained by the window height being replaced and would report the wrong overhead.
+        // Everything the window adds around its content: the caption bar and the resize border.
+        //
+        // The SystemParameters figures are used rather than measuring this window, because at this point
+        // the content on screen has already been squeezed by the old window height and would report a
+        // wrong overhead. They do add up to about 8px less than the real non-client height on a stock
+        // theme, which comes straight off the bottom row, so that shortfall is covered explicitly.
         double frame = SystemParameters.WindowCaptionHeight
                        + SystemParameters.WindowResizeBorderThickness.Top
-                       + SystemParameters.WindowResizeBorderThickness.Bottom;
+                       + SystemParameters.WindowResizeBorderThickness.Bottom
+                       + NonClientShortfall;
 
         double wanted = wantedContent + frame + ContentSlack;
 
         // Never taller than the working area, so a dialog cannot extend past the bottom of the screen.
         // When the content does not fit in that budget the scroll viewer reaches the rest.
-        double budget = SystemParameters.WorkArea.Height * MaxHeightFraction;
+        double budget = WorkingAreaHeight();
 
         // The height grows to fit the content and never beyond the screen. A dialog whose declared
         // height is already larger keeps it, so a deliberately roomy layout is not shrunk.
         Height = Math.Max(Height, Math.Min(wanted, budget));
 
         // Re-centre, because the window may have grown past where it was placed.
-        if (WindowStartupLocation == WindowStartupLocation.CenterOwner) CentreOnOwner();
+        CentreIfNeeded();
+    }
+
+    /// <summary>
+    /// The raw working-area height of the monitor this dialog is on, for the check that the lookup
+    /// works. Zero means the lookup failed and the primary monitor would be used instead.
+    /// </summary>
+    internal double UiTestMonitorWorkHeight() => WorkingAreaHeight() / MaxHeightFraction;
+
+    /// <summary>
+    /// The usable height of the monitor this dialog is on. <see cref="SystemParameters.WorkArea"/> is the
+    /// primary monitor only, so a dialog opened from a window on a shorter second display could be sized
+    /// past the bottom of that display; this asks the owner's screen instead and falls back to the
+    /// primary when there is no owner.
+    /// </summary>
+    private double WorkingAreaHeight()
+    {
+        var handle = Owner is not null
+            ? new System.Windows.Interop.WindowInteropHelper(Owner).Handle
+            : new System.Windows.Interop.WindowInteropHelper(this).Handle;
+
+        if (handle != IntPtr.Zero
+            && MonitorFromWindow(handle, MonitorDefaultToNearest) is { } monitor
+            && monitor != IntPtr.Zero)
+        {
+            var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+            if (GetMonitorInfo(monitor, ref info))
+                return (info.WorkArea.Bottom - info.WorkArea.Top) * MaxHeightFraction;
+        }
+
+        return SystemParameters.WorkArea.Height * MaxHeightFraction;
+    }
+
+    private const uint MonitorDefaultToNearest = 2;
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr handle, uint flags);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+
+    /// <summary>The native MONITORINFO, whose rectangles are integer pixels, not the WPF <c>Rect</c>.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo
+    {
+        public int Size;
+        public NativeRect Monitor;
+        public NativeRect WorkArea;
+        public uint Flags;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
     }
 
     /// <summary>Whether a dialog's own content already contains a scroll viewer.</summary>
@@ -150,7 +213,24 @@ public class ThemedDialog : Window
     /// </summary>
     private const double ContentSlack = 4;
 
-    /// <summary>Re-centre over the owner after the window's size changed.</summary>
+    /// <summary>
+    /// How much taller a themed window's non-client area is than the caption and resize border add up to.
+    /// Measured on this app's windows with GetClientRect; without it the computed height lands about
+    /// 8px short and the shortfall is taken off the bottom row, which is where the buttons are.
+    /// </summary>
+    private const double NonClientShortfall = 8;
+
+    /// <summary>Re-centre over the owner, but only while the window still wants centring.</summary>
+    private void CentreIfNeeded()
+    {
+        if (WindowStartupLocation == WindowStartupLocation.CenterOwner) CentreOnOwner();
+    }
+
+    /// <summary>
+    /// Re-centre over the owner after the window's size changed. WPF applies
+    /// <see cref="WindowStartupLocation.CenterOwner"/> once, when the window is first shown, so a window
+    /// that then grows would hang off the bottom of its owner without this.
+    /// </summary>
     private void CentreOnOwner()
     {
         if (Owner is null)
@@ -159,8 +239,16 @@ public class ThemedDialog : Window
             return;
         }
 
-        Left = Owner.Left + (Owner.Width - Width) / 2;
-        Top = Owner.Top + (Owner.Height - Height) / 2;
+        // Owner.Left/Top are the restored (normal-state) bounds, which is what WPF centres against.
+        // Centring on the live size instead would place the dialog wrongly when the owner is maximised.
+        Rect bounds = Owner.WindowState == WindowState.Normal
+            ? new Rect(Owner.Left, Owner.Top, Owner.ActualWidth, Owner.ActualHeight)
+            : Owner.RestoreBounds;
+
+        if (bounds.IsEmpty || bounds.Width <= 0) return;
+
+        Left = bounds.Left + (bounds.Width - ActualWidth) / 2;
+        Top = bounds.Top + (bounds.Height - ActualHeight) / 2;
         WindowStartupLocation = WindowStartupLocation.Manual;
     }
 
