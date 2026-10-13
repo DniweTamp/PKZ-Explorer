@@ -310,6 +310,12 @@ public partial class App : Application
                 return DialogMeasure.CheckMonitorHeight(console.Out);
             }
 
+            if (args.Any(a => string.Equals(a, "--check-search", StringComparison.OrdinalIgnoreCase)))
+            {
+                ThemeManager.Initialize(Settings.Theme);
+                return DialogMeasure.CheckSearchFindsCollapsed(console.Out);
+            }
+
             if (args.Any(a => string.Equals(a, "--check-messages", StringComparison.OrdinalIgnoreCase)))
             {
                 ThemeManager.Initialize(Settings.Theme);

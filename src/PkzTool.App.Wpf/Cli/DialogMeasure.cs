@@ -718,6 +718,83 @@ internal static class DialogMeasure
             : $"{problems} message dialog problem(s)");
         return problems == 0 ? 0 : 1;
     }
+    /// <summary>
+    /// Check that the search finds files inside collapsed folders.
+    /// <para>
+    /// The tree walk only collected a folder's children when it was expanded, so with everything
+    /// collapsed the filter had nothing beneath the top level to match: searching for a file that was
+    /// plainly there returned nothing.
+    /// </para>
+    /// </summary>
+    internal static int CheckSearchFindsCollapsed(Action<string> log)
+    {
+        string pkz = Path.Combine(Path.GetTempPath(), "pkztool_search_" + Guid.NewGuid().ToString("N") + ".pkz");
+        int problems = 0;
+
+        try
+        {
+            // A deliberately nested archive: a file two folders deep is the case that failed.
+            PkzTool.Core.Archives.PkzWriter.WriteFile(pkz, new[]
+            {
+                new PkzTool.Core.Archives.PkzFile("outer/inner/deep.dat", "deep"u8.ToArray(),
+                    PkzTool.Core.Archives.EntryCompression.None, 0),
+                new PkzTool.Core.Archives.PkzFile("outer/shallow.dat", "shallow"u8.ToArray(),
+                    PkzTool.Core.Archives.EntryCompression.None, 0),
+                new PkzTool.Core.Archives.PkzFile("toplevel.dat", "top"u8.ToArray(),
+                    PkzTool.Core.Archives.EntryCompression.None, 0),
+            }, oodleDllPath: null);
+
+            var window = HeadlessMainWindow(1240, 820, offScreen: true);
+            window.Show();
+            window.UiTestLoadMany(new[] { pkz });
+            window.UpdateLayout();
+
+            // Everything collapsed is the reported condition.
+            window.UiTestCollapseAll();
+            window.UpdateLayout();
+
+            var collapsed = window.UiTestRowCounts();
+            log($"collapsed: {collapsed.Rows} row(s)");
+
+            // A file two folders deep, found while every folder is collapsed.
+            window.UiTestTypeSearch("deep");
+            window.UpdateLayout();
+            var found = window.UiTestRowCounts();
+
+            bool foundDeep = found.Files >= 1;
+            if (!foundDeep) problems++;
+            log($"{(foundDeep ? "ok  " : "FAIL")} searching 'deep' collapsed shows {found.Files} file(s)");
+
+            // A file one level down, likewise.
+            window.UiTestTypeSearch("shallow");
+            window.UpdateLayout();
+            var shallow = window.UiTestRowCounts();
+            bool foundShallow = shallow.Files >= 1;
+            if (!foundShallow) problems++;
+            log($"{(foundShallow ? "ok  " : "FAIL")} searching 'shallow' collapsed shows {shallow.Files} file(s)");
+
+            // Clearing the search must put the collapsed view back, not leave it expanded.
+            window.UiTestTypeSearch(string.Empty);
+            window.UpdateLayout();
+            var restored = window.UiTestRowCounts();
+            bool restoredCollapsed = restored.Rows == collapsed.Rows;
+            if (!restoredCollapsed) problems++;
+            log($"{(restoredCollapsed ? "ok  " : "FAIL")} clearing the search restores the collapsed view " +
+                $"({restored.Rows} vs {collapsed.Rows})");
+
+            window.Close();
+        }
+        finally
+        {
+            try { File.Delete(pkz); } catch (IOException) { }
+        }
+
+        log(string.Empty);
+        log(problems == 0
+            ? "search finds files inside collapsed folders"
+            : $"{problems} search problem(s)");
+        return problems == 0 ? 0 : 1;
+    }
     /// <summary>Build a message dialog for the capture check, without showing it.</summary>
     private static Window BuildMessageDialog(string heading, string body, string detail,
         Dialogs.MessageKind kind, Dialogs.MessageButtons buttons)

@@ -376,7 +376,12 @@ public partial class MainWindow : Window
             _allRows.Add(new FileRow(folder, depth, _expanded.Contains(folder.Path)));
 
         int childDepth = folder.Path.Length > 0 ? depth + 1 : depth;
-        bool expanded = folder.Path.Length == 0 || _expanded.Contains(folder.Path);
+        // While a search is active the whole tree is walked, whatever is expanded. Filtering only the
+        // rows the tree happened to show meant a search found nothing inside a collapsed folder: its
+        // children were never collected, so the filter had nothing to match.
+        bool expanded = _search.Length > 0
+                        || folder.Path.Length == 0
+                        || _expanded.Contains(folder.Path);
         if (!expanded) return;
 
         foreach (var child in folder.ChildFolders) CollectRows(child, childDepth);
@@ -686,7 +691,10 @@ public partial class MainWindow : Window
         _search = SearchBox.Text.Trim();
         SearchPlaceholder.Visibility = SearchBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
         SearchClear.Visibility = SearchBox.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
-        ApplyFilterAndSort();
+        // Rebuild first: the tree walk now includes collapsed folders while a search is active, so the
+        // rows to filter only exist once the walk has been redone with the new search text.
+        if (_workspace.Archives.Count > 0) RebuildRows();
+        else ApplyFilterAndSort();
     }
 
     private void OnSearchClear(object sender, MouseButtonEventArgs e)
@@ -1059,6 +1067,31 @@ public partial class MainWindow : Window
         - RowViewportWidth(FileList);
 
     /// <summary>
+    /// Type into the search box and let the handler run, as typing would. Assigning the text alone does
+    /// not raise TextChanged, so a check that only set the property would test nothing.
+    /// </summary>
+    internal void UiTestTypeSearch(string text)
+    {
+        SearchBox.Text = text;
+        OnSearchChanged(SearchBox, new TextChangedEventArgs(
+            System.Windows.Controls.Primitives.TextBoxBase.TextChangedEvent, UndoAction.None));
+    }
+
+    /// <summary>How many rows the list is showing, and how many of them are files.</summary>
+    internal (int Rows, int Files) UiTestRowCounts() =>
+        (_rows.Count, _rows.Count(r => !r.IsFolder));
+
+    /// <summary>Collapse every folder, as the Collapse all command does.</summary>
+    internal void UiTestCollapseAll()
+    {
+        _expanded.Clear();
+        RebuildRows();
+    }
+
+    /// <summary>Whether the tree walk is currently ignoring expansion state, which it does while searching.</summary>
+    internal bool UiTestIsSearching => _search.Length > 0;
+
+    /// <summary>
     /// The toolbar's own geometry, for the check that the search box uses the space it has rather than
     /// being capped to a sliver with dead space either side.
     /// </summary>
@@ -1213,12 +1246,28 @@ public partial class MainWindow : Window
                 ? $"'{leaf}' matched {matched} row(s)"
                 : $"FAIL '{leaf}' matched nothing");
 
+            // The same search with every folder collapsed must find the same file. This is the case that
+            // was broken: the tree walk skipped a collapsed folder's children, so the filter had nothing
+            // beneath the top level to match and a plainly-present file could not be found.
+            OnCollapseAll(this, new RoutedEventArgs());
+            SearchBox.Text = leaf;
+            int collapsedMatched = _rows.Count;
+            yield return ("search by name with everything collapsed", collapsedMatched > 0
+                ? $"'{leaf}' matched {collapsedMatched} row(s) while collapsed"
+                : "FAIL found nothing with every folder collapsed");
+
             SearchBox.Text = "zzz-no-such-entry-zzz";
             yield return ("search with no match", _rows.Count == 0
                 ? "0 rows, empty state shown"
                 : $"FAIL expected 0 rows, got {_rows.Count}");
 
             SearchBox.Clear();
+
+            // Clearing the search must put the collapsed view back rather than leaving it expanded.
+            int afterClear = _rows.Count;
+            yield return ("clearing the search keeps the tree collapsed", afterClear <= collapsedMatched
+                ? $"{afterClear} row(s), collapsed as before"
+                : $"FAIL {afterClear} rows after clearing; the tree was left expanded");
         }
 
         // Sorting: each column must reorder without losing or duplicating a row.

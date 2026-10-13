@@ -177,6 +177,7 @@ internal static class UiSmoke
                      ("a dropped pkz is opened", DialogMeasure.CheckDroppingAPkzOpensIt),
                      ("a bad archive is reported", DialogMeasure.CheckBadArchiveIsReported),
                      ("message dialogs are themed and cannot block", DialogMeasure.CheckMessageDialogs),
+                     ("search finds files in collapsed folders", DialogMeasure.CheckSearchFindsCollapsed),
                  })
         {
             var lines = new List<string>();

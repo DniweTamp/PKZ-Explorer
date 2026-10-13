@@ -315,6 +315,9 @@ wrong.
 has a working default and cancel button — the last of these because wrapping a dialog's content in a
 scroll viewer could quietly break Enter and Escape.
 
+`--check-search` confirms a file inside a collapsed folder is found, and that clearing the search
+restores the collapsed view.
+
 `--check-messages` confirms every prompt is themed, sized to its content, shows its detail card only
 when there is a detail, and returns immediately when suppressed instead of blocking a headless run.
 
@@ -351,6 +354,13 @@ The toolbar's search box is stretched to fill the space between the buttons and 
 It must not be centred instead: a `TextBox` with no width and no content asks for about 90px, so
 centring it left a sliver in the middle of an 878px column with ~394px of dead space beside it.
 `--check-main-layout` asserts the box fills its column, at three window sizes.
+
+### Search
+
+The filter matches across the whole archive, not just what the tree is showing. While a search is
+active the tree walk ignores expansion state, so a file inside a collapsed folder is still found —
+that is the point of a search. Clearing it puts the collapsed view back as it was; searching never
+leaves the tree expanded.
 
 ### Prompts
 
