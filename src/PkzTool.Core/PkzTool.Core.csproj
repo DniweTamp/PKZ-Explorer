@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>PkzTool.Core</AssemblyName>
+    <RootNamespace>PkzTool.Core</RootNamespace>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The container model, the portable settings file shape and the byte formatter are shared with
+         XT1 Studio rather than copied, so the two tools cannot drift apart. -->
+    <ProjectReference Include="..\..\..\Xt1Tool\src\Xt1.Core\Xt1.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ZStandard is the only compression PKZ uses besides Oodle, which is a user-supplied dll. -->
+    <PackageReference Include="ZstdSharp.Port" Version="0.8.8" />
+  </ItemGroup>
+
+</Project>

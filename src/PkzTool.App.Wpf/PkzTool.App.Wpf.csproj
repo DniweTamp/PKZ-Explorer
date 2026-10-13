@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>PKZ Explorer</AssemblyName>
+    <RootNamespace>PkzTool.App.Wpf</RootNamespace>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ApplicationIcon>PkzExplorer.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="PkzExplorer.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PkzTool.Core\PkzTool.Core.csproj" />
+  </ItemGroup>
+
+  <!--
+    The Windows Desktop SDK's implicit using set does not include System.IO, but this app is built from
+    file IO on every screen. Adding it here keeps the sources free of a using that would be noise in
+    every file, and matches what the referenced Xt1.Core expects.
+  -->
+  <ItemGroup>
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+</Project>

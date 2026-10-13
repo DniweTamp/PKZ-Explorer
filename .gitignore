@@ -1,0 +1,199 @@
+# ---------------------------------------------------------------------------
+# Build output
+# ---------------------------------------------------------------------------
+bin/
+obj/
+artifacts/
+publish/
+publish-*/
+[Oo]ut/
+
+# Archives written to the repository root by publish-release.bat
+/src.zip
+/PkzExplorer-win-x64.zip
+*.binlog
+*.tlog
+*.idb
+*.ilk
+*.obj
+*.o
+*.pdb
+*.dll
+*.exe
+*.so
+*.dylib
+*.cache
+
+# ---------------------------------------------------------------------------
+# Test / coverage output
+# ---------------------------------------------------------------------------
+TestResults/
+**/TestResults/
+*.testrun
+*.trx
+*.coverage
+*.coverage.xml
+*.cobertura.xml
+coverage*.json
+coverage*.xml
+*.received.*
+*_Visible-D41d8cd9-
+
+# ---------------------------------------------------------------------------
+# Visual Studio
+# ---------------------------------------------------------------------------
+.vs/
+*.user
+*.suo
+*.userosscache
+*.userprefs
+*.sln.docstates
+*.sln.docstates.s
+*.VC.db
+*.VC.VC.opendb
+*.aps
+*.pch
+*.pch.*
+*.vspscc
+*.vssscc
+*.scc
+*.tlb
+*.tlh
+*.tli
+*.dbmdl
+*.opendb
+*.svclog
+*.pidb
+
+# ReSharper / Rider
+.idea/
+_ReSharper*/
+*.DotSettings
+*.DotSettings.user
+*.DotCover
+*.run
+*.runconfig
+*.rsuser
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Scratch / editor swap files
+*.tmp
+*.temp
+*.tmp.*
+*.bak
+*.orig
+*.rej
+*.swp
+*.swo
+*~
+*.log
+*.err
+*.stackdump
+.localhistory/
+.history/
+
+# ---------------------------------------------------------------------------
+# NuGet
+# ---------------------------------------------------------------------------
+packages/
+project.lock.json
+project.assets.json
+*.nuget.config
+*.nuget.dgspec.json
+*.nupkg
+*.snupkg
+nuget.exe
+NuGet.exe
+NuGetScratch
+.dotnet/
+
+# ---------------------------------------------------------------------------
+# .NET generated files
+# ---------------------------------------------------------------------------
+*.deps.json
+*.runtimeconfig.json
+*.runtimeconfig.template.json
+*.genruntimeconfig.cache
+*.AssemblyInfo.cs
+*.AssemblyInfoInputs.cache
+*.assets.cache
+*.AssemblyReference.cache
+*.CoreCompileInputs.cache
+*.FilelistAbsolute.txt
+*.Up2Date
+*.GlobalUsings.g.cs
+*.GeneratedMSBuildEditorConfig.editorconfig
+*.genbundle.cache
+*.genpublishdeps.cache
+
+# ---------------------------------------------------------------------------
+# Signing / secrets
+# ---------------------------------------------------------------------------
+*.pfx
+*.p12
+*.key
+*.key.user
+*.snk
+
+# ---------------------------------------------------------------------------
+# Local project state
+# ---------------------------------------------------------------------------
+# The tool persists settings.json next to the executable, which is the
+# repository root when it is launched from a dev build's own folder. It holds
+# machine-specific paths (the Oodle dll) and the recent-file list, so no copy
+# of it belongs in the history.
+settings.json
+
+# Kilo (local agent config and worktrees)
+.kilo/
+
+# ---------------------------------------------------------------------------
+# Oodle
+# ---------------------------------------------------------------------------
+# Proprietary and never redistributed: the user supplies their own copy, and a
+# stray one dropped beside the sources for testing must not be committed.
+oo2core*.dll
+oo2core*.so
+oo2core*.dylib
+
+# ---------------------------------------------------------------------------
+# Local test material
+# ---------------------------------------------------------------------------
+# Scratch projects and directories used to reproduce a bug or measure
+# behaviour during development. Never part of the tool.
+/_verify/
+/_review/
+/_audit/
+/_diag/
+/_scratch/
+/_shots/
+
+# ---------------------------------------------------------------------------
+# OS junk
+# ---------------------------------------------------------------------------
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+desktop.ini
+.DS_Store
+.AppleDouble
+.LSOverride
+.Icon?
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+.SymLink

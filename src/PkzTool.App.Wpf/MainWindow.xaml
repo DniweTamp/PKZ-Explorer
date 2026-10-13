@@ -1,0 +1,301 @@
+<Window x:Class="PkzTool.App.Wpf.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="PKZ Explorer" Height="820" Width="1240" MinHeight="520" MinWidth="820"
+        Icon="/PkzExplorer.ico"
+        WindowStartupLocation="CenterScreen" UseLayoutRounding="True" SnapsToDevicePixels="True"
+        Background="{DynamicResource Brush.Window}">
+
+    <Window.Resources>
+        <!-- A folder row's glyph, so the tree reads as a tree without needing a TreeView control. -->
+        <Style x:Key="RowIcon" TargetType="TextBlock" BasedOn="{StaticResource IconText}">
+            <Setter Property="Width" Value="18" />
+            <Setter Property="TextAlignment" Value="Center" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Background="{DynamicResource Brush.Window}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Menu bar -->
+        <Border Grid.Row="0" Background="{DynamicResource Brush.Window}"
+                BorderBrush="{DynamicResource Brush.Border}" BorderThickness="0,0,0,1">
+            <StackPanel Orientation="Horizontal" Margin="6,3">
+                <Button Style="{StaticResource MenuTopButton}" Content="File" Click="OnOpenMenu">
+                    <Button.ContextMenu>
+                        <ContextMenu Opened="OnFileMenuOpened">
+                            <MenuItem Header="Open..." Click="OnMenuOpen" InputGestureText="Ctrl+O"
+                                      ToolTip="Open one or more pkz files; this replaces everything currently loaded" />
+                            <MenuItem x:Name="MenuOpenRecent" Header="Open Recent"
+                                      ToolTip="Reopen a single pkz file" />
+                            <Separator Style="{StaticResource MenuSeparator}" />
+                            <MenuItem x:Name="MenuSave" Header="Save" Click="OnMenuSave" InputGestureText="Ctrl+S"
+                                      ToolTip="Write every modified pkz back to its file" />
+                            <MenuItem x:Name="MenuSaveAs" Header="Save As..." Click="OnMenuSaveAs"
+                                      InputGestureText="Ctrl+Shift+S"
+                                      ToolTip="Choose a destination for each loaded pkz" />
+                            <Separator Style="{StaticResource MenuSeparator}" />
+                            <MenuItem Header="PKZ from folder..." Click="OnMenuFromFolder"
+                                      ToolTip="Pack a folder into a new pkz, then load it" />
+                            <Separator Style="{StaticResource MenuSeparator}" />
+                            <MenuItem Header="Close all" Click="OnMenuCloseAll" />
+                            <MenuItem Header="Exit" Click="OnMenuExit" />
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
+                <Button Style="{StaticResource MenuTopButton}" Content="Edit" Click="OnOpenMenu">
+                    <Button.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem x:Name="MenuExtract" Header="Extract selected..." Click="OnExtractSelected"
+                                      ToolTip="Write the selected entries to a folder, recreating their paths" />
+                            <MenuItem x:Name="MenuExtractAll" Header="Extract all..." Click="OnExtractAll" />
+                            <Separator Style="{StaticResource MenuSeparator}" />
+                            <MenuItem x:Name="MenuReplace" Header="Replace..." Click="OnReplace"
+                                      ToolTip="Replace this file's content from a file on disk (single selection)" />
+                            <MenuItem x:Name="MenuRecompress" Header="Recompress..." Click="OnRecompress"
+                                      ToolTip="Change the compression of the selected files" />
+                            <MenuItem x:Name="MenuAdd" Header="Add files..." Click="OnAdd"
+                                      ToolTip="Add files into the selected folder" />
+                            <Separator Style="{StaticResource MenuSeparator}" />
+                            <MenuItem x:Name="MenuRename" Header="Rename" Click="OnRename" InputGestureText="F2" />
+                            <MenuItem x:Name="MenuDelete" Header="Delete" Click="OnDelete" InputGestureText="Del" />
+                            <MenuItem x:Name="MenuRevert" Header="Revert selected" Click="OnRevert"
+                                      ToolTip="Undo the staged changes to the selection" />
+                            <Separator Style="{StaticResource MenuSeparator}" />
+                            <MenuItem x:Name="MenuSelectAll" Header="Select all" Click="OnSelectAll" InputGestureText="Ctrl+A" />
+                            <MenuItem x:Name="MenuExpandAll" Header="Expand all" Click="OnExpandAll" />
+                            <MenuItem x:Name="MenuCollapseAll" Header="Collapse all" Click="OnCollapseAll" />
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
+                <Button Style="{StaticResource MenuTopButton}" Content="Tools" Click="OnOpenMenu">
+                    <Button.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="Settings..." Click="OnMenuSettings" />
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
+                <Button Style="{StaticResource MenuTopButton}" Content="Help" Click="OnOpenMenu">
+                    <Button.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="About" Click="OnMenuAbout" />
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
+            </StackPanel>
+        </Border>
+
+        <!-- Toolbar: actions on the loaded view. -->
+        <Border Grid.Row="1" Background="{DynamicResource Brush.Window}"
+                BorderBrush="{DynamicResource Brush.Border}" BorderThickness="0,0,0,1">
+            <Grid Margin="10,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Style="{StaticResource ToolbarButton}" Click="OnMenuOpen"
+                            ToolTip="Open pkz files (Ctrl+O)">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource IconText}" Text="&#xE8E5;" />
+                            <TextBlock Text="Open" Margin="7,0,0,0" />
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource ToolbarButton}" Click="OnMenuSave"
+                            ToolTip="Write every modified pkz back (Ctrl+S)">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource IconText}" Text="&#xE74E;" />
+                            <TextBlock Text="Save" Margin="7,0,0,0" />
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource ToolbarButton}" Click="OnExtractSelected"
+                            ToolTip="Extract the selected entries">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource IconText}" Text="&#xE896;" />
+                            <TextBlock Text="Extract" Margin="7,0,0,0" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <!-- Search: filters the visible list without touching the tree's stored order. -->
+                <Grid Grid.Column="1" MaxWidth="360" HorizontalAlignment="Center">
+                    <TextBox x:Name="SearchBox" Style="{StaticResource SearchBox}"
+                             TextChanged="OnSearchChanged"
+                             ToolTip="Filter the list by path (Ctrl+F to focus)" />
+                    <TextBlock x:Name="SearchPlaceholder" Text="Search paths..." IsHitTestVisible="False"
+                               Foreground="{DynamicResource Brush.Muted}" Margin="11,0,0,0"
+                               VerticalAlignment="Center" />
+                    <TextBlock x:Name="SearchClear" Text="&#xE711;" Style="{StaticResource IconTextSmall}"
+                               HorizontalAlignment="Right" Margin="0,0,10,0" Cursor="Hand"
+                               MouseLeftButtonUp="OnSearchClear" Visibility="Collapsed"
+                               ToolTip="Clear the filter" />
+                </Grid>
+
+                <Button x:Name="ThemeButton" Grid.Column="2" Style="{StaticResource PillButton}"
+                        Click="OnToggleTheme" ToolTip="Toggle light / dark theme">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="ThemeIcon" Style="{StaticResource IconText}" Text="&#xE708;" />
+                        <TextBlock Text="Theme" Margin="7,0,0,0" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- Progress strip: shown only while a long operation runs. -->
+        <Border x:Name="ProgressPanel" Grid.Row="2" Style="{StaticResource ProgressPanel}" Margin="10,8,10,0"
+                Visibility="Collapsed">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="ProgressLabel" Grid.Column="0" VerticalAlignment="Center"
+                           Foreground="{DynamicResource Brush.Muted}" MinWidth="180"
+                           TextTrimming="CharacterEllipsis" Text="Working..." />
+                <ProgressBar x:Name="ProgressBar" Grid.Column="1" Style="{StaticResource OperationProgressBar}"
+                             Margin="12,0" VerticalAlignment="Center" Minimum="0" Maximum="1" Value="0" />
+                <Button x:Name="ProgressCancel" Grid.Column="2" Style="{StaticResource PillButton}"
+                        Click="OnCancelOperation" Content="Cancel" />
+            </Grid>
+        </Border>
+
+        <!-- The list: a sortable grid over the merged virtual filesystem. -->
+        <Border Grid.Row="3" Style="{StaticResource Card}" Margin="10,8,10,0" ClipToBounds="True">
+            <DockPanel>
+                <ListView x:Name="FileList" Margin="6,6,4,6" Background="Transparent" BorderThickness="0"
+                          SelectionMode="Extended" VirtualizingPanel.IsVirtualizing="True"
+                          VirtualizingPanel.VirtualizationMode="Recycling"
+                          SelectionChanged="OnSelectionChanged"
+                          PreviewMouseRightButtonDown="OnListPreviewMouseRightButtonDown"
+                          MouseDoubleClick="OnListDoubleClick"
+                          PreviewKeyDown="OnListPreviewKeyDown"
+                          AllowDrop="True" Drop="OnListDrop" DragOver="OnListDragOver"
+                          PreviewMouseLeftButtonDown="OnListPreviewMouseLeftButtonDown"
+                          PreviewMouseMove="OnListPreviewMouseMove"
+                          MouseUp="OnListMouseUp">
+                    <ListView.ContextMenu>
+                        <ContextMenu Opened="OnListMenuOpened">
+                            <MenuItem x:Name="CtxExtract" Header="Extract selected..." Click="OnExtractSelected" />
+                            <MenuItem x:Name="CtxExtractAll" Header="Extract all..." Click="OnExtractAll" />
+                            <Separator Style="{StaticResource MenuSeparator}" />
+                            <MenuItem x:Name="CtxReplace" Header="Replace..." Click="OnReplace"
+                                      ToolTip="Replace this file from a file on disk" />
+                            <MenuItem x:Name="CtxRecompress" Header="Recompress..." Click="OnRecompress" />
+                            <MenuItem x:Name="CtxAdd" Header="Add files..." Click="OnAdd"
+                                      ToolTip="Add files into the selected folder" />
+                            <Separator Style="{StaticResource MenuSeparator}" />
+                            <MenuItem x:Name="CtxRename" Header="Rename" Click="OnRename" InputGestureText="F2" />
+                            <MenuItem x:Name="CtxDelete" Header="Delete" Click="OnDelete" InputGestureText="Del" />
+                            <Separator Style="{StaticResource MenuSeparator}" />
+                            <MenuItem x:Name="CtxRevert" Header="Revert this row"
+                                      Click="OnRevert"
+                                      ToolTip="Undo every staged change to the selection, leaving other rows alone" />
+                            <Separator Style="{StaticResource MenuSeparator}" />
+                            <MenuItem x:Name="CtxExpand" Header="Expand all" Click="OnExpandAll" />
+                            <MenuItem x:Name="CtxCollapse" Header="Collapse all" Click="OnCollapseAll" />
+                        </ContextMenu>
+                    </ListView.ContextMenu>
+
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
+                            <!-- Indentation makes the flat grid read as a folder tree. -->
+                            <Setter Property="Padding" Value="0" />
+                            <Setter Property="ToolTip" Value="{Binding Tooltip}" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
+
+                    <ListView.View>
+                        <GridView x:Name="FileGrid" AllowsColumnReorder="False">
+                            <GridViewColumn x:Name="ColumnName" Header="Filename" Width="360">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="{Binding Indent}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Chevron: only folders get one, and it toggles on click. -->
+                                            <TextBlock Grid.Column="0" Style="{StaticResource IconTextSmall}"
+                                                       Text="{Binding ChevronGlyph}" Width="14"
+                                                       Visibility="{Binding ChevronVisibility}"
+                                                       MouseLeftButtonUp="OnChevronClick" Cursor="Hand" />
+
+                                            <TextBlock Grid.Column="1" Style="{StaticResource RowIcon}"
+                                                       Text="{Binding IconGlyph}" />
+
+                                            <!-- Name plus the modified marker. -->
+                                            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                                <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis"
+                                                           Foreground="{Binding NameBrush}"
+                                                           FontWeight="{Binding NameWeight}" />
+                                                <TextBlock Text="{Binding ModifiedMark}" Margin="7,0,0,0"
+                                                           Foreground="{DynamicResource Brush.Accent}"
+                                                           FontWeight="SemiBold" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+
+                            <GridViewColumn x:Name="ColumnSize" Header="Size" Width="110">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding SizeText}" HorizontalAlignment="Right"
+                                                   Margin="0,0,12,0" Foreground="{Binding SizeBrush}" />
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+
+                            <GridViewColumn x:Name="ColumnFormat" Header="Format" Width="90"
+                                            DisplayMemberBinding="{Binding Format}" />
+
+                            <GridViewColumn x:Name="ColumnCompression" Header="Compression" Width="120"
+                                            DisplayMemberBinding="{Binding Compression}" />
+                        </GridView>
+                    </ListView.View>
+                </ListView>
+
+                <!-- Empty state, so a freshly opened window explains itself. -->
+                <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center"
+                            IsHitTestVisible="False">
+                    <TextBlock Style="{StaticResource IconText}" FontSize="44" HorizontalAlignment="Center"
+                               Foreground="{DynamicResource Brush.BorderStrong}" Text="&#xE8B7;" />
+                    <TextBlock Text="No pkz loaded" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"
+                               Margin="0,14,0,0" Foreground="{DynamicResource Brush.Muted}" />
+                    <TextBlock Text="File &gt; Open, or drag pkz files onto this window."
+                               HorizontalAlignment="Center" Margin="0,6,0,0"
+                               Foreground="{DynamicResource Brush.Muted}" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- Status bar -->
+        <Border Grid.Row="4" Background="{DynamicResource Brush.Status}"
+                BorderBrush="{DynamicResource Brush.Border}" BorderThickness="0,1,0,0" Margin="0,8,0,0">
+            <Grid Margin="12,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="StatusLeft" Grid.Column="0" Text="Ready"
+                           Foreground="{DynamicResource Brush.Muted}" TextTrimming="CharacterEllipsis" />
+                <TextBlock x:Name="StatusMiddle" Grid.Column="1" Margin="14,0,0,0"
+                           Foreground="{DynamicResource Brush.Muted}" />
+                <TextBlock x:Name="StatusRight" Grid.Column="2" Margin="14,0,0,0"
+                           Foreground="{DynamicResource Brush.Muted}" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
