@@ -1,0 +1,17 @@
+# Normalise line endings in the repository itself, so a checkout on any machine
+# gets the same bytes. Without this, git's autocrlf rewrites every file on
+# checkout and a one-line edit shows up as a whole-file diff.
+* text=auto eol=lf
+
+# Windows batch files must keep CRLF: cmd.exe is the only thing that reads them,
+# and a stray LF-only line in a batch file can make it misparse a label.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# The published icon and any other binary must never be line-ending translated.
+*.ico binary
+*.png binary
+*.jpg binary
+*.zip binary
+*.7z binary
+*.pkz binary
