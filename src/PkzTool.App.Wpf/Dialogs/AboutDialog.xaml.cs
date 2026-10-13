@@ -12,6 +12,10 @@ public partial class AboutDialog : ThemedDialog
 {
     public AboutDialog(int archiveCount, int fileCount, PkzSettings settings)
     {
+        // The body scrolls between a fixed header and a fixed button row, so the window keeps the
+        // height it declares instead of growing to fit all of the prose at once.
+        SizesItself = true;
+
         InitializeComponent();
 
         Subtitle.Text = "Bayonetta 3 pkz archives \u2014 browse, extract and edit";

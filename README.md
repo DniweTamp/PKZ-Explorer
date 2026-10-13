@@ -78,7 +78,8 @@ The script rebuilds the output folder every time, keeps only the expected execut
 two checks against the published build before reporting success:
 
 * `--uitest`, which builds the shell and every dialog and exercises the interactive behaviour — this
-  is what catches a resource a single-file publish dropped;
+  is what catches a resource a single-file publish dropped — and confirms every dialog shows its own
+  button row;
 * `--help`, which confirms the command line still works from the published exe.
 
 It then deletes the `settings.json` those checks wrote, because the tool keeps its state beside the
@@ -294,6 +295,25 @@ it and exactly as `--list` prints it:
 `--uitest [file]` builds the shell and every dialog headlessly and reports what it checked. This is
 how the XAML is verified without a human clicking through the app — it catches a broken resource key
 or a constructor that throws.
+
+`--measure-dialogs` lays every dialog out off-screen and reports whether it fits the working area,
+is resizable, and shows its own button row. This is the check for the class of bug where a dialog's
+content grows past its fixed height and the bottom row — the buttons — becomes unreachable.
+
+`--capture-dialog <name> <out.png>` renders one dialog to a PNG, so a layout can be looked at rather
+than only asserted about. Names: `about`, `compression`, `overwrite`, `textprompt`, `oodle`,
+`pkzpick`, `settings`.
+
+### Dialog sizing
+
+Dialogs are not fixed-size boxes. Every one is resizable, and `ThemedDialog` grows the window to the
+height its content actually needs on first show, capped at 92% of the working area so it can never
+run off the bottom of the screen; anything beyond that scrolls. A dialog that manages its own layout
+(the About box, whose body scrolls between a fixed header and a fixed button row) opts out with
+`SizesItself`.
+
+This exists because three dialogs shipped taller than their window — the Settings dialog by 180px —
+and the clipped row was always the buttons.
 
 ### One documented exception to "any argument runs headless"
 

@@ -1,4 +1,6 @@
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 using PkzTool.App.Wpf.Dialogs;
 
 namespace PkzTool.App.Wpf.Cli;
@@ -95,6 +97,56 @@ internal static class UiSmoke
             }
         }
 
+        // Laid out for real, off-screen, so the check below sees actual positions rather than a
+        // measurement. A dialog whose buttons sit past the bottom edge is unusable, and that shipped
+        // once: the settings window was too short for its own content and hid OK and Cancel.
+        foreach (var (name, make) in DialogFactories())
+        {
+            ThemedDialog? dialog = null;
+            try
+            {
+                dialog = make();
+                dialog.WindowStartupLocation = WindowStartupLocation.Manual;
+                dialog.Left = -32000;
+                dialog.Top = -32000;
+                dialog.Show();
+                dialog.UpdateLayout();
+
+                var last = LastButton(dialog);
+                if (last is null)
+                {
+                    checks++;
+                    log($"ok   {name} has no button row to check");
+                    continue;
+                }
+
+                double bottom = last.TransformToAncestor(dialog)
+                    .Transform(new Point(0, 0)).Y + last.ActualHeight;
+                double clientBottom = dialog.ActualHeight
+                                      - SystemParameters.WindowCaptionHeight
+                                      - SystemParameters.WindowResizeBorderThickness.Top
+                                      - SystemParameters.WindowResizeBorderThickness.Bottom;
+
+                checks++;
+                if (bottom <= clientBottom + 1)
+                {
+                    log($"ok   {name} shows its button row ({last.Content})");
+                }
+                else
+                {
+                    problems.Add($"{name}: '{last.Content}' sits {bottom - clientBottom:0}px past the bottom edge");
+                }
+            }
+            catch (Exception ex)
+            {
+                problems.Add($"{name} layout: {ex.GetType().Name}: {ex.Message}");
+            }
+            finally
+            {
+                dialog?.Close();
+            }
+        }
+
         window?.Close();
 
         foreach (var problem in problems) log($"FAIL {problem}");
@@ -102,6 +154,28 @@ internal static class UiSmoke
             ? $"ui smoke: {checks} checks passed"
             : $"ui smoke: {checks} checks, {problems.Count} failure(s)");
         return problems.Count == 0 ? 0 : 1;
+    }
+
+    /// <summary>
+    /// The last Button in a dialog's visual tree, in layout order. That is the one that lands furthest
+    /// down, so it is the one that goes missing first when a dialog is too short for its content.
+    /// </summary>
+    private static Button? LastButton(DependencyObject root)
+    {
+        var found = new List<Button>();
+        CollectButtons(root, found);
+        return found.Count > 0 ? found[^1] : null;
+    }
+
+    private static void CollectButtons(DependencyObject root, List<Button> found)
+    {
+        int count = VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is Button button) found.Add(button);
+            CollectButtons(child, found);
+        }
     }
 
     /// <summary>

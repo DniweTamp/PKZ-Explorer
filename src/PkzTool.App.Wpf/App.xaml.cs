@@ -76,6 +76,24 @@ public partial class App : Application
 
         try
         {
+            // --measure-dialogs reports whether any fixed-size dialog is taller than the space it has,
+            // which is the failure that hides a button row off the bottom of the window.
+            if (args.Any(a => string.Equals(a, "--measure-dialogs", StringComparison.OrdinalIgnoreCase)))
+            {
+                ThemeManager.Initialize(Settings.Theme);
+                return DialogMeasure.Run(console.Out);
+            }
+
+            // --capture-dialog renders one dialog to a PNG so its layout can be inspected.
+            int capture = Array.FindIndex(args, a => string.Equals(a, "--capture-dialog", StringComparison.OrdinalIgnoreCase));
+            if (capture >= 0)
+            {
+                ThemeManager.Initialize(Settings.Theme);
+                string which = capture + 1 < args.Length ? args[capture + 1] : "settings";
+                string to = capture + 2 < args.Length ? args[capture + 2] : "dialog.png";
+                return DialogMeasure.Capture(which, to, console.Out);
+            }
+
             // --uitest builds the shell and every dialog headlessly, which is the only way to prove the
             // XAML is sound without a human clicking through it.
             int uiTest = Array.FindIndex(args, a => string.Equals(a, "--uitest", StringComparison.OrdinalIgnoreCase));
