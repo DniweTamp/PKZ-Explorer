@@ -8,12 +8,30 @@
     <AssemblyName>PkzTool.Core</AssemblyName>
     <RootNamespace>PkzTool.Core</RootNamespace>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!--
+      Xt1.Core lives in the sibling XT1 Studio repository, so the container model, the theme enum and
+      the byte formatter are shared with that tool instead of being copied and left to drift.
+
+      The default assumes this repository sits beside XT1 Studio (exefs\PkzTool next to
+      exefs\Xt1Tool), which is how it is developed. Anywhere else, point at the checkout with
+      -p:Xt1CoreProject=<path to Xt1.Core.csproj>, or set the XT1_CORE_PROJECT environment variable.
+    -->
+    <Xt1CoreProject Condition="'$(Xt1CoreProject)' == '' AND '$(XT1_CORE_PROJECT)' != ''">$(XT1_CORE_PROJECT)</Xt1CoreProject>
+    <Xt1CoreProject Condition="'$(Xt1CoreProject)' == ''">$(MSBuildThisFileDirectory)..\..\..\Xt1Tool\src\Xt1.Core\Xt1.Core.csproj</Xt1CoreProject>
   </PropertyGroup>
 
+  <!--
+    Failing here with a sentence beats failing later with "the type or namespace name 'Xt1' could not
+    be found" in unrelated files, which says nothing about the missing checkout.
+  -->
+  <Target Name="CheckXt1CorePresent" BeforeTargets="ResolveProjectReferences;ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(Xt1CoreProject)')"
+           Text="Xt1.Core was not found at '$(Xt1CoreProject)'. PkzTool shares types with XT1 Studio, so that repository must be checked out too. Put this repository beside Xt1Tool and build again, or pass -p:Xt1CoreProject=&lt;path&gt;." />
+  </Target>
+
   <ItemGroup>
-    <!-- The container model, the portable settings file shape and the byte formatter are shared with
-         XT1 Studio rather than copied, so the two tools cannot drift apart. -->
-    <ProjectReference Include="..\..\..\Xt1Tool\src\Xt1.Core\Xt1.Core.csproj" />
+    <ProjectReference Include="$(Xt1CoreProject)" />
   </ItemGroup>
 
   <ItemGroup>
