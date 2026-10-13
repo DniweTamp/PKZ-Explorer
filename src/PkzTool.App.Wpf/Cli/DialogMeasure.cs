@@ -795,6 +795,105 @@ internal static class DialogMeasure
             : $"{problems} search problem(s)");
         return problems == 0 ? 0 : 1;
     }
+    /// <summary>
+    /// Render the main window with a search that matches nothing, so the empty state can be looked at
+    /// rather than only asserted about.
+    /// </summary>
+    internal static int CaptureSearchEmpty(string archivePath, string outputPath, Action<string> log)
+    {
+        var window = HeadlessMainWindow(1240, 820, offScreen: true);
+        window.Show();
+        window.UiTestLoadMany(new[] { archivePath });
+        window.UpdateLayout();
+
+        window.UiTestTypeSearch("zzz-no-such-entry-zzz");
+        window.UpdateLayout();
+
+        var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(
+            (int)window.ActualWidth, (int)window.ActualHeight, 96, 96,
+            System.Windows.Media.PixelFormats.Pbgra32);
+        bitmap.Render((System.Windows.Media.Visual)window.Content);
+
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+        using (var stream = File.Create(outputPath)) encoder.Save(stream);
+
+        log($"wrote {outputPath}");
+        log($"empty state text: '{window.UiTestEmptyStateText()}'");
+        window.Close();
+        return 0;
+    }
+    /// <summary>
+    /// Check the empty-list panel says something true.
+    /// <para>
+    /// Two situations leave the list blank and they need opposite advice. A single "No pkz loaded" was
+    /// shown for both, so a user with an archive open and a filter in the search box was told no file was
+    /// loaded — while the status bar beside it said one was.
+    /// </para>
+    /// </summary>
+    internal static int CheckEmptyStateIsHonest(Action<string> log)
+    {
+        string pkz = Path.Combine(Path.GetTempPath(), "pkztool_empty_" + Guid.NewGuid().ToString("N") + ".pkz");
+        int problems = 0;
+
+        try
+        {
+            PkzTool.Core.Archives.PkzWriter.WriteFile(pkz, new[]
+            {
+                new PkzTool.Core.Archives.PkzFile("pl/pl0000.dat", "x"u8.ToArray(),
+                    PkzTool.Core.Archives.EntryCompression.None, 0),
+            }, oodleDllPath: null);
+
+            // 1. Nothing loaded, no search: the original wording, and no clear button.
+            var a = HeadlessMainWindow(1240, 820, offScreen: true);
+            a.Show();
+            a.UpdateLayout();
+            string textA = a.UiTestEmptyStateText();
+            bool okA = textA.Contains("No pkz") && !a.UiTestEmptyStateHasClearButton;
+            if (!okA) problems++;
+            log($"{(okA ? "ok  " : "FAIL")} nothing loaded, no search: {textA}");
+
+            // 2. Loaded, search matches nothing: must not claim nothing is loaded, and must offer a way
+            //    back.
+            var b = HeadlessMainWindow(1240, 820, offScreen: true);
+            b.Show();
+            b.UiTestLoadMany(new[] { pkz });
+            b.UiTestTypeSearch("zzz-no-match");
+            b.UpdateLayout();
+            string textB = b.UiTestEmptyStateText();
+            bool okB = !textB.Contains("No pkz")
+                       && textB.Contains("No matches")
+                       && textB.Contains("zzz-no-match")
+                       && b.UiTestEmptyStateHasClearButton;
+            if (!okB) problems++;
+            log($"{(okB ? "ok  " : "FAIL")} loaded, no match: {textB}");
+
+            // 3. Nothing loaded, but a search typed: still the open-a-file message, since that is the
+            //    actual problem.
+            var c = HeadlessMainWindow(1240, 820, offScreen: true);
+            c.Show();
+            c.UiTestTypeSearch("zzz");
+            c.UpdateLayout();
+            string textC = c.UiTestEmptyStateText();
+            bool okC = textC.Contains("No pkz");
+            if (!okC) problems++;
+            log($"{(okC ? "ok  " : "FAIL")} nothing loaded, search typed: {textC}");
+
+            a.Close();
+            b.Close();
+            c.Close();
+        }
+        finally
+        {
+            try { File.Delete(pkz); } catch (IOException) { }
+        }
+
+        log(string.Empty);
+        log(problems == 0
+            ? "the empty-list panel tells the truth in every case"
+            : $"{problems} misleading empty state(s)");
+        return problems == 0 ? 0 : 1;
+    }
     /// <summary>Build a message dialog for the capture check, without showing it.</summary>
     private static Window BuildMessageDialog(string heading, string body, string detail,
         Dialogs.MessageKind kind, Dialogs.MessageButtons buttons)

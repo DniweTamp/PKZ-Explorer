@@ -178,6 +178,7 @@ internal static class UiSmoke
                      ("a bad archive is reported", DialogMeasure.CheckBadArchiveIsReported),
                      ("message dialogs are themed and cannot block", DialogMeasure.CheckMessageDialogs),
                      ("search finds files in collapsed folders", DialogMeasure.CheckSearchFindsCollapsed),
+                     ("the empty state tells the truth", DialogMeasure.CheckEmptyStateIsHonest),
                  })
         {
             var lines = new List<string>();

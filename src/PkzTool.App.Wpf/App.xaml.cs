@@ -310,6 +310,20 @@ public partial class App : Application
                 return DialogMeasure.CheckMonitorHeight(console.Out);
             }
 
+            if (args.Any(a => string.Equals(a, "--capture-search-empty", StringComparison.OrdinalIgnoreCase)))
+            {
+                ThemeManager.Initialize(Settings.Theme);
+                int ci = Array.FindIndex(args, a => string.Equals(a, "--capture-search-empty", StringComparison.OrdinalIgnoreCase));
+                string pkzPath = ci + 1 < args.Length && !args[ci + 1].StartsWith('-') ? args[ci + 1] : string.Empty;
+                string outPath = ci + 2 < args.Length ? args[ci + 2] : "search-empty.png";
+                return DialogMeasure.CaptureSearchEmpty(pkzPath, outPath, console.Out);
+            }
+            if (args.Any(a => string.Equals(a, "--check-empty-state", StringComparison.OrdinalIgnoreCase)))
+            {
+                ThemeManager.Initialize(Settings.Theme);
+                return DialogMeasure.CheckEmptyStateIsHonest(console.Out);
+            }
+
             if (args.Any(a => string.Equals(a, "--check-search", StringComparison.OrdinalIgnoreCase)))
             {
                 ThemeManager.Initialize(Settings.Theme);

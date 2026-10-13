@@ -398,6 +398,51 @@ public partial class MainWindow : Window
     /// without the path that leads to it.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Show the panel that fills the list area when there are no rows, with the message that matches
+    /// why it is empty.
+    /// <para>
+    /// Two different situations leave the list blank and they need opposite advice. With nothing
+    /// loaded the answer is to open a file; with a search that matched nothing the answer is to widen
+    /// or clear the search. A single "No pkz loaded" told a user with an archive open, and a filter
+    /// in the box, something plainly untrue.
+    /// </para>
+    /// </summary>
+    private void UpdateEmptyState()
+    {
+        bool nothingLoaded = _workspace.Archives.Count == 0;
+        bool searching = _search.Length > 0;
+
+        EmptyState.Visibility = _rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (_rows.Count > 0) return;
+
+        if (searching && !nothingLoaded)
+        {
+            EmptyGlyph.Text = "\uE721";   // a magnifier, not a folder: nothing is missing, nothing matched
+            EmptyHeading.Text = "No matches";
+            EmptyHint.Text = $"Nothing in this archive matches \"{_search}\".";
+            EmptyClearSearch.Visibility = Visibility.Visible;
+        }
+        else if (searching)
+        {
+            // No archive at all, and a filter typed into the box.
+            EmptyGlyph.Text = "\uE8B7";
+            EmptyHeading.Text = "No pkz loaded";
+            EmptyHint.Text = "File > Open, or drag pkz files onto this window.";
+            EmptyClearSearch.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            EmptyGlyph.Text = "\uE8B7";
+            EmptyHeading.Text = "No pkz loaded";
+            EmptyHint.Text = "File > Open, or drag pkz files onto this window.";
+            EmptyClearSearch.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    /// <summary>Clear the search from the empty state, so the whole archive comes back.</summary>
+    private void OnEmptyClearSearch(object sender, RoutedEventArgs e) => OnSearchClear(sender, null!);
+
     private void ApplyFilterAndSort()
     {
         IEnumerable<FileRow> rows = _allRows;
@@ -426,7 +471,7 @@ public partial class MainWindow : Window
         _rows.Clear();
         foreach (var row in materialised) _rows.Add(row);
 
-        EmptyState.Visibility = _rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateEmptyState();
         FileList.Visibility = _rows.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
 
         // A sort highlights its column header, so the current order is never a mystery.
@@ -1077,6 +1122,17 @@ public partial class MainWindow : Window
             System.Windows.Controls.Primitives.TextBoxBase.TextChangedEvent, UndoAction.None));
     }
 
+    /// <summary>The text the empty state is showing, so a check can assert it is the right message.</summary>
+    internal string UiTestEmptyStateText() =>
+        EmptyState.Visibility != Visibility.Visible
+            ? "(hidden)"
+            : string.Join(" | ", EmptyState.Children.OfType<TextBlock>().Select(t => t.Text));
+
+    /// <summary>Whether the empty state is on screen.</summary>
+    internal bool UiTestEmptyStateVisible => EmptyState.Visibility == Visibility.Visible;
+
+    /// <summary>Whether the empty state offers a way to clear the search.</summary>
+    internal bool UiTestEmptyStateHasClearButton => EmptyClearSearch.Visibility == Visibility.Visible;
     /// <summary>How many rows the list is showing, and how many of them are files.</summary>
     internal (int Rows, int Files) UiTestRowCounts() =>
         (_rows.Count, _rows.Count(r => !r.IsFolder));

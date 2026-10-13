@@ -275,16 +275,26 @@
 
                 <!-- Empty state, so a freshly opened window explains itself. It shares the grid cell
                      with the list, so it centres in the panel itself and the list underneath still
-                     fills the whole area. -->
-                <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center"
-                            IsHitTestVisible="False">
-                    <TextBlock Style="{StaticResource IconText}" FontSize="44" HorizontalAlignment="Center"
+                     fills the whole area.
+                     The glyph, heading and hint are all set from code, because "nothing is loaded" and
+                     "your search matched nothing" both leave the list empty but need opposite advice:
+                     one says open a file, the other says widen the search. -->
+                <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock x:Name="EmptyGlyph" Style="{StaticResource IconText}" FontSize="44"
+                               HorizontalAlignment="Center" IsHitTestVisible="False"
                                Foreground="{DynamicResource Brush.BorderStrong}" Text="&#xE8B7;" />
-                    <TextBlock Text="No pkz loaded" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"
-                               Margin="0,14,0,0" Foreground="{DynamicResource Brush.Muted}" />
-                    <TextBlock Text="File &gt; Open, or drag pkz files onto this window."
-                               HorizontalAlignment="Center" Margin="0,6,0,0"
+                    <TextBlock x:Name="EmptyHeading" FontSize="18" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" Margin="0,14,0,0" IsHitTestVisible="False"
+                               Text="No pkz loaded"
                                Foreground="{DynamicResource Brush.Muted}" />
+                    <TextBlock x:Name="EmptyHint" HorizontalAlignment="Center" Margin="0,6,0,0"
+                               IsHitTestVisible="False"
+                               Text="File &gt; Open, or drag pkz files onto this window."
+                               Foreground="{DynamicResource Brush.Muted}" />
+                    <Button x:Name="EmptyClearSearch" Style="{StaticResource PillButton}"
+                            Content="Clear the search" HorizontalAlignment="Center" Margin="0,16,0,0"
+                            Click="OnEmptyClearSearch" Visibility="Collapsed"
+                            ToolTip="Show every entry again" />
                 </StackPanel>
             </Grid>
         </Border>

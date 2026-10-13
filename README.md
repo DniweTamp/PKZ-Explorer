@@ -315,6 +315,10 @@ wrong.
 has a working default and cancel button — the last of these because wrapping a dialog's content in a
 scroll viewer could quietly break Enter and Escape.
 
+`--check-empty-state` confirms the panel shown when the list is empty says something true: the three
+cases (nothing loaded, a search that matched nothing, and a search typed with nothing loaded) each
+get their own message, and only the first claims no archive is open.
+
 `--check-search` confirms a file inside a collapsed folder is found, and that clearing the search
 restores the collapsed view.
 
@@ -362,7 +366,9 @@ active the tree walk ignores expansion state, so a file inside a collapsed folde
 that is the point of a search. Clearing it puts the collapsed view back as it was; searching never
 leaves the tree expanded.
 
-### Prompts
+When a search matches nothing the panel says so, with a magnifier rather than the folder glyph, the
+term that was searched for, and a button to clear it. Two situations leave the list blank and they
+need opposite advice, so "No pkz loaded" is only used when no archive really is open.### Prompts
 
 Every prompt goes through `Prompt.Show`, which draws the themed `MessageDialog` rather than the system
 `MessageBox`. The system dialog ignores the palette and looks nothing like the rest of the tool; this
