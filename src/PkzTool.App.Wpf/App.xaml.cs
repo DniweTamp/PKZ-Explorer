@@ -42,24 +42,34 @@ public partial class App : Application
             // decides when the run is over, and every headless path ends in Shutdown(code).
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
-            // --show is the one exception: it opens the shell with archives preloaded. That is what
-            // lets the GUI be driven and screenshotted from a script without automating the Open
-            // dialog, and it is only reachable from a command line.
+            // --show opens the shell with archives preloaded, so the GUI can be driven and screenshotted
+            // from a script without automating the Open dialog.
             int show = Array.FindIndex(e.Args, a => string.Equals(a, "--show", StringComparison.OrdinalIgnoreCase));
-            if (show >= 0)
+
+            // Explorer passes a bare file path when a .pkz is opened by double-click, and the shell is
+            // registered for the extension. That is not a command line, so it must open the GUI with the
+            // file loaded. Treating it as one made double-clicking a pkz print "no operation flag was
+            // given" and exit 2 instead of opening anything.
+            var dropped = e.Args.Where(a => !a.StartsWith('-') && File.Exists(a)).ToList();
+            bool looksLikeACommandLine = e.Args.Any(a => a.StartsWith('-'));
+
+            if (show >= 0 || (dropped.Count > 0 && !looksLikeACommandLine))
             {
-                // --show is interactive despite having an argument, so it takes the GUI's shutdown
-                // behaviour: closing the window must end the process.
+                // Interactive despite having arguments, so it takes the GUI's shutdown behaviour:
+                // closing the window must end the process.
                 ShutdownMode = ShutdownMode.OnLastWindowClose;
 
                 base.OnStartup(e);
                 ThemeManager.Initialize(Settings.Theme);
 
-                var preloaded = e.Args[(show + 1)..].Where(a => !a.StartsWith('-') && File.Exists(a)).ToList();
+                var toOpen = show >= 0
+                    ? e.Args[(show + 1)..].Where(a => !a.StartsWith('-') && File.Exists(a)).ToList()
+                    : dropped;
+
                 var shell = new MainWindow();
                 MainWindow = shell;
                 shell.Show();
-                if (preloaded.Count > 0) shell.UiTestLoadMany(preloaded);
+                if (toOpen.Count > 0) shell.LoadInitial(toOpen);
                 return;
             }
 
@@ -169,6 +179,11 @@ public partial class App : Application
                 return DialogMeasure.CheckMonitorHeight(console.Out);
             }
 
+            if (args.Any(a => string.Equals(a, "--check-drop", StringComparison.OrdinalIgnoreCase)))
+            {
+                ThemeManager.Initialize(Settings.Theme);
+                return DialogMeasure.CheckDroppingAPkzOpensIt(console.Out);
+            }
             if (args.Any(a => string.Equals(a, "--check-stretch", StringComparison.OrdinalIgnoreCase)))
             {
                 ThemeManager.Initialize(Settings.Theme);

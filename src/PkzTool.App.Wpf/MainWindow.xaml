@@ -14,7 +14,11 @@
         </Style>
     </Window.Resources>
 
-    <Grid Background="{DynamicResource Brush.Window}">
+    <!-- The root accepts drops, not just the list. With nothing loaded the list is Collapsed, so a drop
+         onto the window had no target at all: the empty state is IsHitTestVisible=False, and the
+         toolbar and status bar are plain Borders. That is exactly the state where a drop is wanted. -->
+    <Grid Background="{DynamicResource Brush.Window}" AllowDrop="True"
+          Drop="OnWindowDrop" DragOver="OnWindowDragOver">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />

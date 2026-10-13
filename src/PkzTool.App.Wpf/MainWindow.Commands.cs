@@ -725,6 +725,39 @@ public partial class MainWindow
         }
     }
 
+    /// <summary>
+    /// Drag feedback for a drop anywhere on the window. Files from Explorer are always accepted, because
+    /// that is how a pkz is opened or added; an internal move is only legal over the list, which handles
+    /// it itself.
+    /// </summary>
+    private void OnWindowDragOver(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            e.Effects = DragDropEffects.Copy;
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>
+    /// A drop anywhere on the window that the list did not already handle.
+    /// <para>
+    /// This exists because the list is not always there to accept the drop: with no archive loaded it is
+    /// Collapsed, and the empty state on top of it is not hit-testable, so dropping a pkz onto a freshly
+    /// opened window did nothing. The list keeps its own handler for internal moves, which need to know
+    /// which folder the pointer was over.
+    /// </para>
+    /// </summary>
+    private void OnWindowDrop(object sender, DragEventArgs e)
+    {
+        if (e.Handled) return;
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+        if (e.Data.GetData(DataFormats.FileDrop) is not string[] paths || paths.Length == 0) return;
+
+        e.Handled = true;
+        DropFromExplorer(paths);
+    }
+
     private void OnListDragOver(object sender, DragEventArgs e)
     {
         // From Explorer: a file drop is an add. From within the tree: a move onto a folder of the same
@@ -763,9 +796,36 @@ public partial class MainWindow
     /// Add files dropped from Explorer. The target folder and pkz are chosen the same way the Add
     /// command chooses them, and the compression type is asked for once.
     /// </summary>
+    /// <summary>
+    /// Handle files dropped onto the window from Explorer.
+    /// <para>
+    /// A dropped pkz is <em>opened</em>, which is what dropping an archive onto the window means and the
+    /// only sensible reading when nothing is loaded yet. Anything else is loose content, and is added to
+    /// the load's target folder, which needs an archive to add into.
+    /// </para>
+    /// </summary>
     private void DropFromExplorer(string[] paths)
     {
-        if (_workspace.Archives.Count == 0) return;
+        // Split the drop by what it means: archives to open, everything else to add.
+        var archives = paths.Where(p => p.EndsWith(".pkz", StringComparison.OrdinalIgnoreCase)
+                                        && File.Exists(p)).ToList();
+        var content = paths.Except(archives).ToList();
+
+        if (archives.Count > 0)
+        {
+            // Opening replaces the view, so it asks about staged work first, exactly as File > Open does.
+            LoadArchives(archives);
+        }
+
+        if (content.Count == 0) return;
+
+        // Loose files need somewhere to go, so they need an archive already loaded. With none, this is
+        // reported rather than silently ignored, which is what it used to do.
+        if (_workspace.Archives.Count == 0)
+        {
+            StatusLeft.Text = "Open a pkz first, then drop files onto it to add them.";
+            return;
+        }
 
         var target = _workspace.AddTargetFolder(SelectedNodes());
         var pkz = PkzPickDialog.Ask(this, _workspace.Archives, target.Path);
@@ -780,7 +840,7 @@ public partial class MainWindow
 
         // A dropped folder contributes its contents, matching Add; a bare file keeps its name.
         var files = new List<string>();
-        foreach (var path in paths)
+        foreach (var path in content)
         {
             if (Directory.Exists(path))
                 files.AddRange(Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories));

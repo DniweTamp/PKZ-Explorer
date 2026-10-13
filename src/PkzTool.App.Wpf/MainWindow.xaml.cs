@@ -926,8 +926,18 @@ public partial class MainWindow : Window
     /// </summary>
     internal void UiTestLoad(string path) => UiTestLoadMany(new[] { path });
     /// <summary>The same for several archives, which is what <c>--show</c> uses to preload a session.</summary>
-    internal void UiTestLoadMany(IReadOnlyList<string> paths)
+    /// <summary>
+    /// Open the given archives, without a progress strip or a failure report. Used at startup, when the
+    /// window is not yet on screen and there is no staged work to lose, and by the smoke checks.
+    /// <para>
+    /// This is the quiet path, not a way around <see cref="LoadArchives"/>: that one asks about staged
+    /// edits and reports failures, which is what an interactive open must do.
+    /// </para>
+    /// </summary>
+    internal void LoadInitial(IReadOnlyList<string> paths)
     {
+        if (paths.Count == 0) return;
+
         _workspace.Load(paths, _settings.ResolveOodleDll());
         _expanded.Clear();
 
@@ -941,6 +951,9 @@ public partial class MainWindow : Window
         RebuildRows();
         UpdateStatus();
     }
+
+    /// <summary>Kept for the smoke checks, which call this by name.</summary>
+    internal void UiTestLoadMany(IReadOnlyList<string> paths) => LoadInitial(paths);
 
     /// <summary>
     /// Leave an edit staged, so the check that follows can prove closing the window does not raise a
@@ -991,6 +1004,47 @@ public partial class MainWindow : Window
         return (SearchBox.ActualWidth, boxLeft - preceding, row.ActualWidth - following - boxRight,
                 row.ColumnDefinitions[1].ActualWidth);
     }
+
+    /// <summary>
+    /// Whether this element would accept a file dropped on it, by walking up from it looking for a
+    /// handler. This is what a drop from Explorer resolves to, so it is how the drop surface is checked
+    /// without synthesising real drag events.
+    /// </summary>
+    internal bool UiTestAcceptsDrop(DependencyObject? from)
+    {
+        for (var node = from; node is not null; node = System.Windows.Media.VisualTreeHelper.GetParent(node))
+        {
+            if (node is UIElement { AllowDrop: true }) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// The regions a drop check probes. Every one must accept a drop: a pkz can be dropped anywhere on
+    /// the window, and the empty state is the case that used to have no target at all.
+    /// </summary>
+    internal IEnumerable<(string Name, DependencyObject? Element)> UiTestDropTargets()
+    {
+        yield return ("the list", FileList);
+        yield return ("the empty state area", EmptyState);
+        yield return ("the toolbar", ThemeButton);
+        yield return ("the status bar", StatusLeft);
+        yield return ("the search box", SearchBox);
+    }
+
+    /// <summary>
+    /// Handle a drop of the given paths as if Explorer had delivered them, so the drop behaviour can be
+    /// exercised without a mouse.
+    /// </summary>
+    internal void UiTestDropFiles(IReadOnlyList<string> paths) => DropFromExplorer(paths.ToArray());
+
+    /// <summary>What the status bar currently says, so a drop check can read the outcome.</summary>
+    internal string UiTestStatus => StatusLeft.Text;
+
+    /// <summary>
+    /// How many archives the view holds, so a drop check can tell an open from a no-op.
+    /// </summary>
+    internal int UiTestArchiveCount => _workspace.Archives.Count;
 
     /// <summary>
     /// The numbers the column-stretch maths runs on, so a horizontal scrollbar can be diagnosed from

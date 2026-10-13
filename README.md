@@ -309,6 +309,9 @@ wrong.
 has a working default and cancel button — the last of these because wrapping a dialog's content in a
 scroll viewer could quietly break Enter and Escape.
 
+`--check-drop` confirms every region of the window accepts a file drop — the list, the empty area,
+the toolbar, the status bar — and that dropping a pkz with none loaded opens it.
+
 `--check-stretch` counts how many times the trailing column is re-sized over a fixed number of idle
 layout passes. That stretch is driven by `LayoutUpdated`, which fires on every pass, so a change that
 never converged would spin the UI thread; the check proves it settles.
@@ -347,11 +350,35 @@ scrolls between a fixed header and a fixed button row) opts out with `SizesItsel
 This exists because three dialogs shipped taller than their window — the Settings dialog by 180px —
 and the clipped row was always the buttons.
 
+### Open a pkz by double-clicking it
+
+Double-clicking a `.pkz` opens the GUI with it loaded, and so does dropping one anywhere on the
+window. Both pass a plain file path, which is not a command line, so the app tells the two apart: an
+argument that is just an existing file opens the shell, while anything starting with `-` is a CLI
+operation and runs headless.
+
+To make Windows offer the app for `.pkz` files, associate the extension with the executable — for the
+current user only, which needs no administrator:
+
+```
+assoc .pkz=PKZExplorer.pkz
+ftype PKZExplorer.pkz="C:\path\to\PKZ Explorer.exe" "%1"
+```
+
+Without `ftype`, Windows falls back to an entry under
+`HKCU\Software\Classes\Applications\PKZ Explorer.exe\shell\open\command`, which is what an "Open with"
+choice writes. Either way the executable receives the path as its first argument, which is the form
+described above. A **published copy must be redeployed** for a fix here to reach a double-click: the
+association names a specific file, not the build output.
+
+The window accepts a drop anywhere, not only over the list. With no archive open the list is hidden,
+so a drop on the empty area is the normal way to open the first one — and a dropped `.pkz` *opens*,
+while other dropped files are added to the archive already loaded.
+
 ### One documented exception to "any argument runs headless"
 
-`--show <pkz...>` opens the GUI with those archives already loaded. It exists so the window can be
-driven and screenshotted from a script without automating the Open dialog. It is the only argument
-that does not run headless, and it is never needed for normal use.
+`--show <pkz...>` opens the GUI with those archives already loaded, and so does a bare `.pkz` path.
+Those are the only arguments that do not run headless, and neither is needed for normal use.
 
 ---
 

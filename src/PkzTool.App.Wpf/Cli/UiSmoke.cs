@@ -174,6 +174,7 @@ internal static class UiSmoke
                      ("dialogs keep their default and cancel buttons", DialogMeasure.CheckDialogButtons),
                      ("the trailing column settles", DialogMeasure.CheckStretchSettles),
                      ("the dialog height cap uses the right monitor", DialogMeasure.CheckMonitorHeight),
+                     ("a dropped pkz is opened", DialogMeasure.CheckDroppingAPkzOpensIt),
                  })
         {
             var lines = new List<string>();

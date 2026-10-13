@@ -456,6 +456,64 @@ internal static class DialogMeasure
     }
 
     /// <summary>
+    /// Check that a pkz can be dropped anywhere on the window, and that dropping one opens it.
+    /// <para>
+    /// Two things were wrong. The only drop target was the list, so dropping onto the toolbar, the status
+    /// bar or the empty area did nothing — and with no archive loaded the list is Collapsed, so there was
+    /// no target at all in the very state where a drop is wanted. And the drop handler opened with "if no
+    /// archive is loaded, return", so even a drop that reached it did nothing.
+    /// </para>
+    /// </summary>
+    internal static int CheckDroppingAPkzOpensIt(Action<string> log)
+    {
+        var window = HeadlessMainWindow(1240, 820, offScreen: false);
+        window.Show();
+        window.UpdateLayout();
+
+        int problems = 0;
+
+        // Every region of the window must resolve to a drop target.
+        foreach (var (name, element) in window.UiTestDropTargets())
+        {
+            bool accepts = window.UiTestAcceptsDrop(element);
+            if (!accepts) problems++;
+            log($"{(accepts ? "ok  " : "FAIL")} a drop on {name} is accepted");
+        }
+
+        // Dropping a pkz with nothing loaded must open it, which is what the empty state is for.
+        string pkz = Path.Combine(Path.GetTempPath(), "pkztool_dropcheck_" + Guid.NewGuid().ToString("N") + ".pkz");
+        try
+        {
+            PkzTool.Core.Archives.PkzWriter.WriteFile(pkz, new[]
+            {
+                new PkzTool.Core.Archives.PkzFile("pl/pl0000.dat", "dropped"u8.ToArray(),
+                    PkzTool.Core.Archives.EntryCompression.None, 0),
+            }, oodleDllPath: null);
+
+            int before = window.UiTestArchiveCount;
+            window.UiTestDropFiles(new[] { pkz });
+            window.UpdateLayout();
+            int after = window.UiTestArchiveCount;
+
+            bool opened = after > before;
+            if (!opened) problems++;
+            log($"{(opened ? "ok  " : "FAIL")} dropping a pkz with nothing loaded opens it ({before} -> {after} archive(s))");
+        }
+        finally
+        {
+            try { File.Delete(pkz); } catch (IOException) { }
+        }
+
+        window.Close();
+
+        log(string.Empty);
+        log(problems == 0
+            ? "a pkz can be dropped anywhere on the window and is opened"
+            : $"{problems} drop problem(s)");
+        return problems == 0 ? 0 : 1;
+    }
+
+    /// <summary>
     /// Check the main window's layout at several sizes: the list must fill the panel, the empty message
     /// must be centred in it, and the columns must span it without overflowing into a horizontal
     /// scrollbar. Each of those was wrong at some point — the list filled half the window and the
