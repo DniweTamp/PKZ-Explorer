@@ -29,17 +29,50 @@ dotnet test  PkzTool.sln
 
 ---
 
+## Repository layout
+
+`PkzTool` shares types with **XT1 Studio** (`Xt1.Core`), so that repository has to be checked out
+too. Development assumes the two sit side by side:
+
+```
+exefs\
+  Xt1Tool\        <- the XT1 Studio checkout, providing Xt1.Core
+  PkzTool\        <- this repository
+```
+
+Anywhere else, point the build at the checkout:
+
+```
+dotnet build PkzTool.sln -p:Xt1CoreProject=C:\path\to\Xt1Tool\src\Xt1.Core\Xt1.Core.csproj
+```
+
+The same value can be set once in the `XT1_CORE_PROJECT` environment variable. If `Xt1.Core` cannot
+be found the build stops with one sentence saying so, rather than a dozen "namespace Xt1 could not be
+found" errors in unrelated files.
+
+Line endings are pinned by `.gitattributes`: LF in the repository, CRLF for `.bat`, and binary for
+the icon and archives, so a checkout does not rewrite every file on the way in.
+
+---
+
 ## Publishing a release
 
 ```
-publish-release.bat                 publish into a fresh output folder
-publish-release.bat /zip            also write PkzExplorer-win-x64.zip
+publish-release.bat                 publish, then write src.zip and PkzExplorer-win-x64.zip
+publish-release.bat /noarchives     publish only, skip both archives
 publish-release.bat /nopause        do not wait for a keypress at the end
 ```
 
 The result is a **single `PKZ Explorer.exe`** (framework-dependent, win-x64, ~3.6 MB) in
-`src\PkzTool.App.Wpf\bin\Release\net8.0-windows\publish\win-x64\`. The target machine needs the
-**.NET 8 Desktop Runtime (x64)**; nothing else is bundled.
+`src\PkzTool.App.Wpf\bin\Release\net8.0-windows\publish\win-x64\`, and two archives beside the
+script:
+
+| Artifact | Contents |
+|---|---|
+| `src.zip` | The tracked files at HEAD (`git archive`) |
+| `PkzExplorer-win-x64.zip` | The published build folder |
+
+The target machine needs the **.NET 8 Desktop Runtime (x64)**; nothing else is bundled.
 
 The script rebuilds the output folder every time, keeps only the expected executable, and then runs
 two checks against the published build before reporting success:
@@ -51,12 +84,13 @@ two checks against the published build before reporting success:
 It then deletes the `settings.json` those checks wrote, because the tool keeps its state beside the
 executable and that file is the publisher's own settings, not something to ship.
 
+`src.zip` archives **HEAD**, so uncommitted work is not in it. That is deliberate — the archive
+should describe a build that exists in the history — and the script says so when the tree is dirty
+rather than shipping a zip that does not match the binary.
+
 **The Oodle dll is not bundled.** Oodle is proprietary, so the user points Settings at their own
 `oo2core_*.dll`. Without one, Oodle entries cannot be read or written; `None` and `ZStandard`
 archives work normally.
-
-There is no `src.zip` step: unlike XT1 Studio, this project is not a git repository, so there is no
-HEAD to archive.
 
 ---
 
