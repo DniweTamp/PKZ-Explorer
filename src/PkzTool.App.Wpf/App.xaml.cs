@@ -42,6 +42,12 @@ public partial class App : Application
             // decides when the run is over, and every headless path ends in Shutdown(code).
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
+            // No prompt may be shown from here on unless this turns out to be an interactive launch. A
+            // prompt blocks its thread until someone clicks it, so in a headless run it means hanging on
+            // the first error instead of failing. The answer becomes the safe one, and what was asked is
+            // recorded for a check to assert on.
+            Prompt.Suppress = true;
+
             var args = Normalize(e.Args);
 
             // --show opens the shell with archives preloaded, so the GUI can be driven and screenshotted
@@ -70,6 +76,9 @@ public partial class App : Application
                 // Interactive despite having arguments, so it takes the GUI's shutdown behaviour:
                 // closing the window must end the process.
                 ShutdownMode = ShutdownMode.OnLastWindowClose;
+
+                // ...and its prompts: this launch has a person in front of it.
+                Prompt.Suppress = false;
 
                 base.OnStartup(e);
                 ThemeManager.Initialize(Settings.Theme);
@@ -301,6 +310,11 @@ public partial class App : Application
                 return DialogMeasure.CheckMonitorHeight(console.Out);
             }
 
+            if (args.Any(a => string.Equals(a, "--check-messages", StringComparison.OrdinalIgnoreCase)))
+            {
+                ThemeManager.Initialize(Settings.Theme);
+                return DialogMeasure.CheckMessageDialogs(console.Out);
+            }
             if (args.Any(a => string.Equals(a, "--check-badload", StringComparison.OrdinalIgnoreCase)))
             {
                 ThemeManager.Initialize(Settings.Theme);

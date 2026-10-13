@@ -130,12 +130,22 @@ public class ThemedDialog : Window
         double budget = WorkingAreaHeight();
 
         // The height grows to fit the content and never beyond the screen. A dialog whose declared
-        // height is already larger keeps it, so a deliberately roomy layout is not shrunk.
-        Height = Math.Max(Height, Math.Min(wanted, budget));
+        // height is already larger keeps it, so a deliberately roomy layout is not shrunk — unless the
+        // dialog asked to shrink, which a message box does: a one-line question looks broken sitting in
+        // the empty space a many-line error needed.
+        Height = ShrinksToContent
+            ? Math.Min(Math.Max(wanted, MinHeight), budget)
+            : Math.Max(Height, Math.Min(wanted, budget));
 
         // Re-centre, because the window may have grown past where it was placed.
         CentreIfNeeded();
     }
+
+    /// <summary>
+    /// Set by a dialog whose height should follow its content in both directions. False by default: a
+    /// dialog with a deliberately spacious layout keeps the height it declares.
+    /// </summary>
+    protected bool ShrinksToContent { get; init; }
 
     /// <summary>
     /// The raw working-area height of the monitor this dialog is on, for the check that the lookup

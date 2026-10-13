@@ -99,7 +99,7 @@ public partial class MainWindow
 
         if (outcome.Failures.Count > 0)
         {
-            MessageBox.Show(this,
+            Prompt.Show(this,
                 "Some archives could not be written:\n\n" +
                 string.Join("\n\n", outcome.Failures.Select(f => $"{Path.GetFileName(f.Path)}\n{f.Error}")),
                 "Save failed", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -144,7 +144,7 @@ public partial class MainWindow
 
         if (outcome.Failures.Count > 0)
         {
-            MessageBox.Show(this,
+            Prompt.Show(this,
                 "Some archives could not be written:\n\n" +
                 string.Join("\n\n", outcome.Failures.Select(f => $"{Path.GetFileName(f.Path)}\n{f.Error}")),
                 "Save failed", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -206,7 +206,7 @@ public partial class MainWindow
 
         var build = result.Value;
         if (build.Errors.Count > 0)
-            MessageBox.Show(this,
+            Prompt.Show(this,
                 $"{build.Errors.Count} file(s) could not be read:\n\n" +
                 string.Join("\n", build.Errors.Take(12).Select(e => e.Path)),
                 "Some files were skipped", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -280,7 +280,7 @@ public partial class MainWindow
 
         var result = summary.Value;
         if (result.Errors.Count > 0)
-            MessageBox.Show(this,
+            Prompt.Show(this,
                 $"{result.Errors.Count} file(s) could not be written:\n\n" +
                 string.Join("\n", result.Errors.Take(12).Select(e => $"{e.Path}: {e.Error}")),
                 "Some files failed", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -332,7 +332,7 @@ public partial class MainWindow
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "Replace failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            Prompt.Show(this, ex.Message, "Replace failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -429,7 +429,7 @@ public partial class MainWindow
         bool overwrite = true;
         if (colliding.Count > 0)
         {
-            var answer = MessageBox.Show(this,
+            var answer = Prompt.Show(this,
                 colliding.Count == 1
                     ? $"1 file already exists in {archive.FileName}:\n\n{colliding[0].Path}\n\nOverwrite it?"
                     : $"{colliding.Count} files already exist in {archive.FileName}.\n\n" +
@@ -470,7 +470,7 @@ public partial class MainWindow
               ".";
 
         if (failed.Count > 0)
-            MessageBox.Show(this,
+            Prompt.Show(this,
                 $"{failed.Count} file(s) could not be read:\n\n" + string.Join("\n", failed.Take(12)),
                 "Some files were skipped", MessageBoxButton.OK, MessageBoxImage.Warning);
 
@@ -517,7 +517,7 @@ public partial class MainWindow
                 : $"'{selection[0].Path}'"
             : $"{files.Count} file(s){(folders > 0 ? $" (including {folders} folder(s))" : string.Empty)}";
 
-        var answer = MessageBox.Show(this, $"Delete {what}?\n\nThe change is staged until you save.",
+        var answer = Prompt.Show(this, $"Delete {what}?\n\nThe change is staged until you save.",
             "Confirm delete", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
         if (answer != MessageBoxResult.OK) return;
 
@@ -549,7 +549,7 @@ public partial class MainWindow
 
         if (VirtualPath.ValidateSegment(newName) is { } error)
         {
-            MessageBox.Show(this, error, "Invalid name", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Prompt.Show(this, error, "Invalid name", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -558,7 +558,7 @@ public partial class MainWindow
         string newPath = VirtualPath.WithName(node.Path, newName);
         if (owner is not null && _workspace.WouldCollide(owner, newPath, node.Key))
         {
-            var answer = MessageBox.Show(this,
+            var answer = Prompt.Show(this,
                 $"'{newPath}' already exists in {owner.FileName}.\n\nOverwrite it?",
                 "Name collision", MessageBoxButton.OKCancel, MessageBoxImage.Question);
             if (answer != MessageBoxResult.OK) return;
@@ -580,7 +580,7 @@ public partial class MainWindow
         }
         catch (ArgumentException ex)
         {
-            MessageBox.Show(this, ex.Message, "Invalid name", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Prompt.Show(this, ex.Message, "Invalid name", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -881,7 +881,7 @@ public partial class MainWindow
 
             if (_workspace.WouldCollide(owner, newPath, node.Key))
             {
-                var answer = MessageBox.Show(this,
+                var answer = Prompt.Show(this,
                     $"'{newPath}' already exists in {owner.FileName}.\n\nOverwrite it?",
                     "Name collision", MessageBoxButton.OKCancel, MessageBoxImage.Question);
                 if (answer != MessageBoxResult.OK) continue;

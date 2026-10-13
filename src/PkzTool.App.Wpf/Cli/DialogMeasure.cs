@@ -636,6 +636,98 @@ internal static class DialogMeasure
     }
 
     /// <summary>
+    /// Confirm the message dialogs are themed and sized to their content, and that a prompt cannot
+    /// block a headless run.
+    /// <para>
+    /// Every prompt used to be the system dialog, which ignores the palette, and it blocked its thread
+    /// until someone clicked it — so any error path hung an automated run.
+    /// </para>
+    /// </summary>
+    internal static int CheckMessageDialogs(Action<string> log)
+    {
+        var cases = new (string Name, string Heading, string Body, string Detail,
+            Dialogs.MessageKind Kind, Dialogs.MessageButtons Buttons)[]
+        {
+            ("error", "Could not load", "None of the 2 selected file(s) could be loaded:",
+                "data000.pkz\nnot a pkz archive (the file is 4 bytes, shorter than the 0x20 header)",
+                Dialogs.MessageKind.Error, Dialogs.MessageButtons.Ok),
+            ("warning", "Some files were skipped", "3 file(s) could not be read:",
+                "pl/a.dat\npl/b.dat\npl/c.dat", Dialogs.MessageKind.Warning, Dialogs.MessageButtons.Ok),
+            ("question", "Unsaved changes", "There are 2 staged changes that have not been saved.",
+                string.Empty, Dialogs.MessageKind.Question, Dialogs.MessageButtons.YesNoCancel),
+            ("yesno", "Name collision", "1 file already exists. Overwrite it?",
+                string.Empty, Dialogs.MessageKind.Question, Dialogs.MessageButtons.YesNo),
+        };
+
+        int problems = 0;
+        log("dialog     windowH  detailShown  buttons  themed  verdict");
+        log("---------------------------------------------------------");
+
+        foreach (var c in cases)
+        {
+            var window = BuildMessageDialog(c.Heading, c.Body, c.Detail, c.Kind, c.Buttons);
+            window.WindowStartupLocation = WindowStartupLocation.Manual;
+            window.Left = 0;
+            window.Top = 0;
+            window.ShowInTaskbar = false;
+            window.Show();
+            window.UpdateLayout();
+
+            // Themed: it is one of our dialogs, not a system one, and it painted the requested kind.
+            bool themed = window is Dialogs.MessageDialog;
+
+            // The detail card must only appear when there is a detail to show.
+            var buttons = new List<Button>();
+            Collect(window, buttons);
+            var detailCard = window.FindName("DetailCard") as FrameworkElement;
+            bool detailShown = detailCard?.Visibility == Visibility.Visible;
+            bool detailExpected = !string.IsNullOrWhiteSpace(c.Detail);
+
+            bool buttonsOk = buttons.Count >= (c.Buttons == Dialogs.MessageButtons.Ok ? 1 : 2);
+            bool fits = window.ActualHeight <= SystemParameters.WorkArea.Height;
+            bool noEmptyCard = detailShown == detailExpected;
+
+            bool ok = themed && buttonsOk && fits && noEmptyCard;
+            if (!ok) problems++;
+
+            log($"{c.Name,-10} {window.ActualHeight,7:0}  {detailShown,11}  {buttons.Count,7}  " +
+                $"{themed,6}  " + (ok ? "ok" : "PROBLEM"));
+
+            window.Close();
+        }
+
+        // A prompt raised while suppressed must return at once and be recorded, not block.
+        Dialogs.MessageDialog.SuppressPrompts = true;
+        Dialogs.MessageDialog.ClearHistory();
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var answer = Dialogs.MessageDialog.Show(null, "Test", "body", string.Empty,
+            Dialogs.MessageKind.Warning, Dialogs.MessageButtons.OkCancel);
+        sw.Stop();
+        Dialogs.MessageDialog.SuppressPrompts = false;
+
+        bool suppressed = sw.ElapsedMilliseconds < 500
+                          && Dialogs.MessageDialog.History.Count == 1
+                          && answer == MessageBoxResult.Cancel;
+        if (!suppressed) problems++;
+
+        log(string.Empty);
+        log($"suppressed prompt returns {answer} in {sw.ElapsedMilliseconds}ms, " +
+            $"recorded {Dialogs.MessageDialog.History.Count}");
+        log(problems == 0
+            ? "every message dialog is themed, sized, and cannot block a headless run"
+            : $"{problems} message dialog problem(s)");
+        return problems == 0 ? 0 : 1;
+    }
+    /// <summary>Build a message dialog for the capture check, without showing it.</summary>
+    private static Window BuildMessageDialog(string heading, string body, string detail,
+        Dialogs.MessageKind kind, Dialogs.MessageButtons buttons)
+    {
+        var dialog = new Dialogs.MessageDialog();
+        dialog.UiTestConfigure(heading, body, detail, kind, buttons);
+        return dialog;
+    }
+
+    /// <summary>
     /// Render one dialog to a PNG, so its layout can be looked at rather than only asserted about.
     /// Written for the settings dialog, which shipped with its buttons below the visible area.
     /// </summary>
@@ -651,6 +743,16 @@ internal static class DialogMeasure
             "oodle" => new OodleDialog(null),
             "pkzpick" => new PkzPickDialog(Array.Empty<Core.Workspace.LoadedArchive>(), "pl"),
             "settings" => new SettingsDialog(new Core.Settings.PkzSettings()),
+            "message" or "error" => BuildMessageDialog("Could not load", 
+                "None of the 2 selected file(s) could be loaded:",
+                "data000.pkz\nnot a pkz archive (the file is 4 bytes, shorter than the 0x20 header)\n\ndata001.pkz\nnot a pkz archive (missing \"pkzl\" magic)",
+                Dialogs.MessageKind.Error, Dialogs.MessageButtons.Ok),
+            "warning" => BuildMessageDialog("Some files were skipped",
+                "3 file(s) could not be read:", "pl/a.dat\npl/b.dat\npl/c.dat",
+                Dialogs.MessageKind.Warning, Dialogs.MessageButtons.Ok),
+            "question" => BuildMessageDialog("Unsaved changes",
+                "There are 2 staged changes that have not been saved.\n\nSave before closing?",
+                string.Empty, Dialogs.MessageKind.Question, Dialogs.MessageButtons.YesNoCancel),
             _ => new SettingsDialog(new Core.Settings.PkzSettings()),
         };
 

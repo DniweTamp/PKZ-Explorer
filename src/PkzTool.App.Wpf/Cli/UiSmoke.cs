@@ -176,6 +176,7 @@ internal static class UiSmoke
                      ("the dialog height cap uses the right monitor", DialogMeasure.CheckMonitorHeight),
                      ("a dropped pkz is opened", DialogMeasure.CheckDroppingAPkzOpensIt),
                      ("a bad archive is reported", DialogMeasure.CheckBadArchiveIsReported),
+                     ("message dialogs are themed and cannot block", DialogMeasure.CheckMessageDialogs),
                  })
         {
             var lines = new List<string>();

@@ -327,7 +327,7 @@ public partial class MainWindow : Window
         if (loaded.Failures.Count > 0)
         {
             var detail = string.Join("\n\n", loaded.Failures.Select(f => $"{Path.GetFileName(f.Path)}\n{f.Error}"));
-            MessageBox.Show(this,
+            Prompt.Show(this,
                 loaded.Loaded == 0
                     ? $"None of the {loaded.Failed} selected file(s) could be loaded:\n\n{detail}"
                     : $"{loaded.Loaded} pkz file(s) loaded.\n\nSkipped {loaded.Failed}:\n\n{detail}",
@@ -751,7 +751,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "Operation failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            Prompt.Show(this, ex.Message, "Operation failed", MessageBoxButton.OK, MessageBoxImage.Error);
             return null;
         }
         finally
@@ -778,7 +778,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "Operation failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            Prompt.Show(this, ex.Message, "Operation failed", MessageBoxButton.OK, MessageBoxImage.Error);
             return null;
         }
         finally
@@ -803,7 +803,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, "Operation failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            Prompt.Show(this, ex.Message, "Operation failed", MessageBoxButton.OK, MessageBoxImage.Error);
             return false;
         }
         finally
@@ -868,7 +868,7 @@ public partial class MainWindow : Window
         if (_headless) return false;
 
         int edits = _workspace.Archives.Sum(a => a.Edits.Count);
-        var answer = MessageBox.Show(this,
+        var answer = Prompt.Show(this,
             $"There {(edits == 1 ? "is 1 staged change" : $"are {edits} staged changes")} that have not been saved.\n\n" +
             $"Save before {action}?",
             "Unsaved changes", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
@@ -925,7 +925,14 @@ public partial class MainWindow : Window
     /// Mark this window as a headless check, so nothing it does can raise a modal prompt. Called before
     /// any check runs, because a failing check must not be able to block on a dialog.
     /// </summary>
-    internal void UiTestHeadless() => _headless = true;
+    internal void UiTestHeadless()
+    {
+        _headless = true;
+
+        // One switch for every prompt in the app, so a check cannot silence one kind and leave another
+        // able to block the run. This is what makes the error paths testable.
+        Prompt.Suppress = true;
+    }
 
     /// <summary>
     /// Load an archive without any dialog or confirmation. Used by the <c>--uitest</c> smoke check, so
@@ -1009,7 +1016,7 @@ public partial class MainWindow : Window
                 ? $"Could not load:\n\n{detail}"
                 : $"{result.Loaded} pkz file(s) loaded.\n\nSkipped {result.Failed}:\n\n{detail}";
 
-            MessageBox.Show(this, UiTestLastPrompt,
+            Prompt.Show(this, UiTestLastPrompt,
                 result.Loaded == 0 ? "Could not load" : "Some files were skipped",
                 MessageBoxButton.OK, result.Loaded == 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
         }

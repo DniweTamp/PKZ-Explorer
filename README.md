@@ -315,6 +315,9 @@ wrong.
 has a working default and cancel button — the last of these because wrapping a dialog's content in a
 scroll viewer could quietly break Enter and Escape.
 
+`--check-messages` confirms every prompt is themed, sized to its content, shows its detail card only
+when there is a detail, and returns immediately when suppressed instead of blocking a headless run.
+
 `--check-badload` confirms that loading something which is not a pkz is reported rather than
 leaving an empty window with nothing to explain it — the failure mode a double-click on a
 corrupt file used to produce.
@@ -348,6 +351,22 @@ The toolbar's search box is stretched to fill the space between the buttons and 
 It must not be centred instead: a `TextBox` with no width and no content asks for about 90px, so
 centring it left a sliver in the middle of an 878px column with ~394px of dead space beside it.
 `--check-main-layout` asserts the box fills its column, at three window sizes.
+
+### Prompts
+
+Every prompt goes through `Prompt.Show`, which draws the themed `MessageDialog` rather than the system
+`MessageBox`. The system dialog ignores the palette and looks nothing like the rest of the tool; this
+one uses the same cards, glyphs and pill buttons as every other dialog, tints its heading by severity,
+and shows a scrolling monospace block for the detail — a failed load can list many files.
+
+A prompt also never blocks a headless run. `Prompt.Suppress` is set for any headless invocation, so
+instead of waiting for a click that will never come, a prompt records what it was asked and returns the
+safe answer: Cancel for a cancel-able set, No for yes/no, OK otherwise. That is what makes the error
+paths testable, and `--check-messages` asserts it — a suppressed prompt returns in about 2 ms.
+
+The exception is `--show` and a double-clicked `.pkz`, which are interactive launches and get real
+prompts. A message dialog is also the one dialog that shrinks to its content, so a one-line question
+does not sit in the empty space a ten-line error needed.
 
 ### Dialog sizing
 
