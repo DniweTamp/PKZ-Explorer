@@ -313,7 +313,7 @@ scroll viewer could quietly break Enter and Escape.
 layout passes. That stretch is driven by `LayoutUpdated`, which fires on every pass, so a change that
 never converged would spin the UI thread; the check proves it settles.
 
-`--capture-main [pkz] <out.png>` renders the main window, and `--capture-dialog <name> <out.png>` one
+`--capture-main [pkz] <out.png> [--size=WxH]` renders the main window, and `--capture-dialog <name> <out.png>` one
 dialog. Names for the latter: `about`, `compression`, `overwrite`, `textprompt`, `oodle`, `pkzpick`,
 `settings`. These exist because a layout can pass every assertion and still look wrong: the About
 dialog's button check passed while a screenshot showed the button clipped. Captured PNGs are
@@ -330,6 +330,11 @@ The four columns are fixed widths, and the trailing one is filled to whatever th
 the columns span the list instead of stopping part way across. That column can also be dragged: a
 width the user drags is kept and honoured, and only ever reduced when it would not otherwise fit, so
 dragging it narrower works and dragging it wider cannot raise a horizontal scrollbar.
+
+The toolbar's search box is stretched to fill the space between the buttons and the theme toggle.
+It must not be centred instead: a `TextBox` with no width and no content asks for about 90px, so
+centring it left a sliver in the middle of an 878px column with ~394px of dead space beside it.
+`--check-main-layout` asserts the box fills its column, at three window sizes.
 
 ### Dialog sizing
 

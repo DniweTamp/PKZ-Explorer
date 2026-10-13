@@ -136,7 +136,24 @@ public partial class App : Application
                     else to = arg;
                 }
 
-                return DialogMeasure.CaptureMain(archive, to, console.Out);
+                // An optional "WxH" so the window can be captured at a size other than the default,
+                // which is how the narrow end of the layout gets looked at.
+                double capWidth = 1240, capHeight = 820;
+                var sizeArg = args.FirstOrDefault(a => a.StartsWith("--size=", StringComparison.OrdinalIgnoreCase));
+                if (sizeArg is not null)
+                {
+                    var parts = sizeArg["--size=".Length..].Split('x', 'X');
+                    if (parts.Length == 2
+                        && double.TryParse(parts[0], out double w)
+                        && double.TryParse(parts[1], out double h)
+                        && w > 0 && h > 0)
+                    {
+                        capWidth = w;
+                        capHeight = h;
+                    }
+                }
+
+                return DialogMeasure.CaptureMain(archive, to, console.Out, capWidth, capHeight);
             }
 
             if (args.Any(a => string.Equals(a, "--check-dialog-buttons", StringComparison.OrdinalIgnoreCase)))

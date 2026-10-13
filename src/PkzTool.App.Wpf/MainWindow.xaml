@@ -125,8 +125,11 @@
                     </Button>
                 </StackPanel>
 
-                <!-- Search: filters the visible list without touching the tree's stored order. -->
-                <Grid Grid.Column="1" MaxWidth="360" HorizontalAlignment="Center">
+                <!-- Search: filters the visible list without touching the tree's stored order.
+                     Stretch, not Center: an unconstrained TextBox asks for about 90px, so centring it in
+                     a wide column left most of that column as dead space either side of a sliver. The
+                     MaxWidth keeps it from becoming absurdly wide on a very large window. -->
+                <Grid Grid.Column="1" HorizontalAlignment="Stretch" Margin="16,0">
                     <TextBox x:Name="SearchBox" Style="{StaticResource SearchBox}"
                              TextChanged="OnSearchChanged"
                              ToolTip="Filter the list by path (Ctrl+F to focus)" />

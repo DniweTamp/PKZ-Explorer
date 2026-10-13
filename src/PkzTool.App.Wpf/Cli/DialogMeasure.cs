@@ -275,6 +275,11 @@ internal static class DialogMeasure
         // real viewport instead of guessed at.
         foreach (var line in window.UiTestColumnProbe()) log(line);
 
+        // The toolbar, for the search box width.
+        var search = window.UiTestSearchGeometry();
+        log("");
+        log($"search box            {search.Box,6:0}   (left gap {search.LeftGap:0}, right gap {search.RightGap:0}, column {search.Column:0})");
+
         // This is the diagnostic counterpart to --check-main-layout, but it still reports failure when
         // the columns do not fit: a report that always exits 0 cannot be used as a gate, and the number
         // it prints would be the only sign of a problem.
@@ -508,9 +513,17 @@ internal static class DialogMeasure
             double listFill = panel.ActualWidth - list.ActualWidth;
             bool fills = list.Visibility == Visibility.Visible && listFill < 20;
 
-            bool ok = fills && centred && columnsFit;
+            // The search box must use its column rather than sitting in the middle of it as a sliver.
+            // It was 90px in an 878px column, leaving ~394px dead on each side, because an unconstrained
+            // TextBox asks for about 90px and the grid was centred rather than stretched.
+            var sg = window.UiTestSearchGeometry();
+            bool searchFills = sg.Column > 0 && sg.Box >= sg.Column - 40;
+
+            bool ok = fills && centred && columnsFit && searchFills;
             if (!ok) problems++;
 
+            log($"        search box {sg.Box,5:0} of a {sg.Column,5:0} column (gaps {sg.LeftGap:0}/{sg.RightGap:0})" +
+                (searchFills ? string.Empty : "  <-- search does not fill its column"));
             log($"{width,5:0}x{height,-5:0} panel={panelWidth,6:0} listGap={listFill,4:0} " +
                 $"emptyOffCentre={emptyCentre - panelCentre,5:0} columnsOverflow={columns,4:0}  " +
                 (ok ? "ok" : "PROBLEM"));
@@ -520,7 +533,7 @@ internal static class DialogMeasure
 
         log(string.Empty);
         log(problems == 0
-            ? "the list fills the panel, the empty state is centred, and the columns fit"
+            ? "the list fills the panel, the empty state is centred, the columns fit, and the search box uses its space"
             : $"{problems} size(s) have a layout problem");
         return problems == 0 ? 0 : 1;
     }

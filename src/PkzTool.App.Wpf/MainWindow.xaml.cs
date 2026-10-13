@@ -973,6 +973,26 @@ public partial class MainWindow : Window
         - RowViewportWidth(FileList);
 
     /// <summary>
+    /// The toolbar's own geometry, for the check that the search box uses the space it has rather than
+    /// being capped to a sliver with dead space either side.
+    /// </summary>
+    internal (double Box, double LeftGap, double RightGap, double Column) UiTestSearchGeometry()
+    {
+        var host = (FrameworkElement)SearchBox.Parent;   // the Grid holding box, placeholder and clear
+        var row = (Grid)host.Parent;                     // the toolbar's three-column Grid
+
+        double boxLeft = SearchBox.TransformToAncestor(row).Transform(new Point(0, 0)).X;
+        double boxRight = boxLeft + SearchBox.ActualWidth;
+
+        // Column 1 is the search's own: it starts where the buttons end and stops where Theme begins.
+        double preceding = row.ColumnDefinitions[0].ActualWidth;
+        double following = row.ColumnDefinitions[2].ActualWidth;
+
+        return (SearchBox.ActualWidth, boxLeft - preceding, row.ActualWidth - following - boxRight,
+                row.ColumnDefinitions[1].ActualWidth);
+    }
+
+    /// <summary>
     /// The numbers the column-stretch maths runs on, so a horizontal scrollbar can be diagnosed from
     /// measurements rather than guessed at.
     /// </summary>
