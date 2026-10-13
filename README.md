@@ -322,6 +322,9 @@ get their own message, and only the first claims no archive is open.
 `--check-search` confirms a file inside a collapsed folder is found, and that clearing the search
 restores the collapsed view.
 
+`--check-packed-name` confirms the create-from-folder suggestion is the folder's own name, including a
+trailing separator, a UNC path, a drive root, and a name Windows forbids in a file name.
+
 `--check-prompt-answers` confirms every button of every prompt returns the answer its caller branches
 on — the Yes button of a three-way question once answered OK, which the caller read as Cancel.
 
@@ -371,7 +374,16 @@ leaves the tree expanded.
 
 When a search matches nothing the panel says so, with a magnifier rather than the folder glyph, the
 term that was searched for, and a button to clear it. Two situations leave the list blank and they
-need opposite advice, so "No pkz loaded" is only used when no archive really is open.### Prompts
+need opposite advice, so "No pkz loaded" is only used when no archive really is open.### Packing a folder
+
+**PKZ from folder** suggests the folder's own name with a `.pkz` extension: packing
+`...\OneDrive\Desktop\cloth` suggests `cloth.pkz`. The suggestion never contains a path separator.
+
+A `z_` prefix is deliberately *not* added. The engine enumerates loose archives in name order and the
+later one wins, so a pack meant to override the game's own archives has to sort after them — that is a
+decision to make knowingly, and the help text says so rather than the tool applying it silently.
+
+### Prompts
 
 Every prompt goes through `Prompt.Show`, which draws the themed `MessageDialog` rather than the system
 `MessageBox`. The system dialog ignores the palette and looks nothing like the rest of the tool; this

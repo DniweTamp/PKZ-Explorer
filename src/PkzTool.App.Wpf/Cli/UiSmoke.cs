@@ -180,6 +180,7 @@ internal static class UiSmoke
                      ("search finds files in collapsed folders", DialogMeasure.CheckSearchFindsCollapsed),
                      ("the empty state tells the truth", DialogMeasure.CheckEmptyStateIsHonest),
                      ("prompt buttons return the right answer", DialogMeasure.CheckPromptAnswers),
+                     ("the packed name is the folder name", DialogMeasure.CheckPackedNameSuggestion),
                  })
         {
             var lines = new List<string>();

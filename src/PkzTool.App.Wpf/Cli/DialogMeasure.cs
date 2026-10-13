@@ -951,6 +951,48 @@ internal static class DialogMeasure
             : $"{problems} prompt answer(s) wrong");
         return problems == 0 ? 0 : 1;
     }
+    /// <summary>
+    /// Check the file name the create-from-folder dialog suggests.
+    /// <para>
+    /// It was built from the whole chosen path with the separators swapped for underscores, so packing
+    /// <c>...\Desktop\cloth</c> suggested <c>C__Users_..._cloth.pkz</c> rather than <c>cloth.pkz</c>.
+    /// </para>
+    /// </summary>
+    internal static int CheckPackedNameSuggestion(Action<string> log)
+    {
+        var cases = new (string Path, string Expected)[]
+        {
+            (@"C:\Users\egorb\OneDrive\Рабочий стол\cloth", "cloth.pkz"),
+            (@"C:\Users\egorb\OneDrive\Рабочий стол\cloth\", "cloth.pkz"),   // trailing separator
+            (@"\\server\share\romfs_mod", "romfs_mod.pkz"),
+            (@"C:\a\b\my folder", "my folder.pkz"),                        // a space is legal
+            (@"C:\", "packed.pkz"),                                        // a drive root has no name
+            ("romfs_mod", "romfs_mod.pkz"),                                // already a bare name
+            ("", "packed.pkz"),
+            (@"C:\a\we:ird*name", "we_ird_name.pkz"),                      // illegal in a file name
+        };
+
+        int problems = 0;
+        foreach (var c in cases)
+        {
+            string actual = Dialogs.PkzPath.DefaultNameFor(c.Path);
+            bool ok = actual == c.Expected;
+            if (!ok) problems++;
+            log($"{(ok ? "ok  " : "FAIL")} '{c.Path}' -> '{actual}'" + (ok ? string.Empty : $" (want '{c.Expected}')"));
+        }
+
+        // The suggestion must never contain a separator or a colon: those are what produced the mess.
+        bool noPathLeft = !Dialogs.PkzPath.DefaultNameFor(@"C:\Users\egorb\OneDrive\x\cloth")
+            .Intersect(new[] { '\\', '/', ':' }).Any();
+        if (!noPathLeft) problems++;
+        log($"{(noPathLeft ? "ok  " : "FAIL")} the suggestion is a bare file name");
+
+        log(string.Empty);
+        log(problems == 0
+            ? "the packed name suggestion is the folder's own name"
+            : $"{problems} bad name suggestion(s)");
+        return problems == 0 ? 0 : 1;
+    }
     /// <summary>Build a message dialog for the capture check, without showing it.</summary>
     private static Window BuildMessageDialog(string heading, string body, string detail,
         Dialogs.MessageKind kind, Dialogs.MessageButtons buttons)
