@@ -13,14 +13,16 @@ rem    Produce single file     ON
 rem    Enable ReadyToRun       OFF
 rem
 rem  Usage:
-rem    publish-release.bat                     publish into a fresh output folder
+rem    publish-release.bat                     publish, then write src.zip and
+rem                                            PkzExplorer-win-x64.zip
+rem    publish-release.bat /noarchives         publish only, skip both archives
 rem    publish-release.bat /nopause            do not wait for a keypress at the end
-rem    publish-release.bat /zip                also pack the output into
-rem                                            PkzExplorer-win-x64.zip (needs
-rem                                            PowerShell, which ships with
-rem                                            Windows)
 rem
-rem  Switches can be combined, e.g.  publish-release.bat /zip /nopause
+rem  Switches can be combined, e.g.  publish-release.bat /noarchives /nopause
+rem
+rem  Artifacts written beside this script:
+rem    src.zip                     the tracked files at HEAD (git archive)
+rem    PkzExplorer-win-x64.zip     the published build folder
 rem
 rem  Notes:
 rem    * Symbols (.pdb) are stripped from the publish output by the project, so the folder ships
@@ -33,8 +35,11 @@ rem      None and ZStandard archives work normally.
 rem    * The tool keeps settings.json beside the executable, so it stays portable. A publish
 rem      folder you have been running from therefore holds your settings; the output folder is
 rem      removed on every run, so copy settings.json out first if you care about it.
-rem    * Unlike XT1 Studio there is no src.zip step: this project is not a git repository, so
-rem      there is no HEAD to archive. Run the publish from a checkout if you want that.
+rem    * src.zip archives HEAD, so uncommitted work is not in it. That is deliberate: the archive
+rem      should describe a build that exists in the history. The script says so when the tree is
+rem      dirty rather than silently shipping a zip that does not match the binary.
+rem    * PkzTool shares types with XT1 Studio, so publishing needs that checkout beside this one,
+rem      or -p:Xt1CoreProject=<path> pointing at its Xt1.Core.csproj.
 rem ============================================================================
 
 setlocal EnableExtensions
@@ -45,14 +50,14 @@ set "OUTPUT=%SCRIPT_DIR%src\PkzTool.App.Wpf\bin\Release\net8.0-windows\publish\w
 set "EXENAME=PKZ Explorer.exe"
 
 set "NOPAUSE=0"
-set "MAKE_ZIP=0"
+set "MAKE_ARCHIVES=1"
 
 :parse
 if "%~1"=="" goto :parsed
-if /I "%~1"=="/nopause" set "NOPAUSE=1"
-if /I "%~1"=="/zip"     set "MAKE_ZIP=1"
-if /I "%~1"=="-nopause" set "NOPAUSE=1"
-if /I "%~1"=="-zip"     set "MAKE_ZIP=1"
+if /I "%~1"=="/nopause"    set "NOPAUSE=1"
+if /I "%~1"=="/noarchives" set "MAKE_ARCHIVES=0"
+if /I "%~1"=="-nopause"    set "NOPAUSE=1"
+if /I "%~1"=="-noarchives" set "MAKE_ARCHIVES=0"
 shift
 goto :parse
 :parsed
@@ -145,10 +150,50 @@ if exist "%OUTPUT%\settings.json" (
     del /q "%OUTPUT%\settings.json"
 )
 
-if "%MAKE_ZIP%"=="1" goto :zip
+if "%MAKE_ARCHIVES%"=="1" goto :archives
 goto :done
 
-:zip
+rem ---- source archive --------------------------------------------------------
+rem git archive the committed tree (tracked files at HEAD) into src.zip, replacing any existing
+rem archive so the zip always matches HEAD. Uncommitted work is deliberately absent: the archive is
+rem meant to describe a build that exists in the history.
+:archives
+set "SRC_ZIP=%SCRIPT_DIR%src.zip"
+
+where git >nul 2>nul
+if errorlevel 1 (
+    echo.
+    echo [error] "git" was not found on PATH, so src.zip cannot be created.
+    echo         Re-run with /noarchives to publish without the archives.
+    goto :fail
+)
+
+rem The repository check runs first, because "not a git repository" from git archive is easy to
+rem misread as a missing HEAD rather than a missing checkout.
+git -C "%SCRIPT_DIR%." rev-parse --is-inside-work-tree >nul 2>nul
+if errorlevel 1 (
+    echo.
+    echo [error] "%SCRIPT_DIR%." is not a git repository, so there is no HEAD to archive.
+    echo         Re-run with /noarchives to publish without the archives.
+    goto :fail
+)
+
+rem A dirty tree means src.zip will not match the binary just built. That is worth saying rather than
+rem discovering later, but it is not a failure: a maintainer may be publishing a test build.
+git -C "%SCRIPT_DIR%." diff --quiet 2>nul
+if errorlevel 1 echo [warn] The working tree has uncommitted changes; src.zip archives HEAD only.
+
+echo.
+echo Creating "%SRC_ZIP%" from HEAD ...
+if exist "%SRC_ZIP%" del /f /q "%SRC_ZIP%"
+git -C "%SCRIPT_DIR%." archive --format=zip -o "%SRC_ZIP%" HEAD
+if errorlevel 1 (
+    echo [error] git archive failed.
+    goto :fail
+)
+echo    %SRC_ZIP%
+
+rem ---- binary archive --------------------------------------------------------
 set "ZIP=%SCRIPT_DIR%PkzExplorer-win-x64.zip"
 echo.
 echo Creating "%ZIP%" from "%OUTPUT%" ...
@@ -161,6 +206,11 @@ if errorlevel 1 (
     echo [error] Creating the zip failed.
     goto :fail
 )
+echo    %ZIP%
+
+echo.
+echo  Artifacts beside this script:
+echo    %SRC_ZIP%
 echo    %ZIP%
 
 :done
