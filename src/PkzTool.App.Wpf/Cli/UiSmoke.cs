@@ -147,6 +147,24 @@ internal static class UiSmoke
             }
         }
 
+        // The main window's own layout, at more than one size. Reported here rather than only under its
+        // own switch, because a broken list layout is exactly the kind of thing a release should refuse
+        // to ship: the list once filled half the window and the empty message centred in that half.
+        {
+            var lines = new List<string>();
+            int layoutResult = DialogMeasure.CheckMainLayout(lines.Add);
+            foreach (var line in lines) log($"     {line}");
+            checks++;
+            if (layoutResult == 0)
+            {
+                log("ok   main window layout at 3 sizes");
+            }
+            else
+            {
+                problems.Add("main window layout check failed");
+            }
+        }
+
         window?.Close();
 
         foreach (var problem in problems) log($"FAIL {problem}");

@@ -170,7 +170,10 @@
 
         <!-- The list: a sortable grid over the merged virtual filesystem. -->
         <Border Grid.Row="3" Style="{StaticResource Card}" Margin="10,8,10,0" ClipToBounds="True">
-            <DockPanel>
+            <!-- A Grid, not a DockPanel: a DockPanel only stretches its last child, so with the empty
+                 state listed second the list was sized to its own content and left the right half of
+                 the window empty, while the message centred within that half rather than the window. -->
+            <Grid>
                 <ListView x:Name="FileList" Margin="6,6,4,6" Background="Transparent" BorderThickness="0"
                           SelectionMode="Extended" VirtualizingPanel.IsVirtualizing="True"
                           VirtualizingPanel.VirtualizationMode="Recycling"
@@ -266,7 +269,9 @@
                     </ListView.View>
                 </ListView>
 
-                <!-- Empty state, so a freshly opened window explains itself. -->
+                <!-- Empty state, so a freshly opened window explains itself. It shares the grid cell
+                     with the list, so it centres in the panel itself and the list underneath still
+                     fills the whole area. -->
                 <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center"
                             IsHitTestVisible="False">
                     <TextBlock Style="{StaticResource IconText}" FontSize="44" HorizontalAlignment="Center"
@@ -277,7 +282,7 @@
                                HorizontalAlignment="Center" Margin="0,6,0,0"
                                Foreground="{DynamicResource Brush.Muted}" />
                 </StackPanel>
-            </DockPanel>
+            </Grid>
         </Border>
 
         <!-- Status bar -->

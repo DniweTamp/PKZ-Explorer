@@ -44,6 +44,13 @@ public partial class MainWindow : Window
     private SortColumn _sortColumn = SortColumn.None;
     private bool _sortDescending;
 
+    // The widths the three fixed columns want, remembered from the settings. The Compression column is
+    // not here because it takes whatever space is left; see StretchLastColumn.
+    private double _preferredName;
+    private double _preferredSize;
+    private double _preferredFormat;
+    private double _preferredCompression;
+
     /// <summary>The four sortable columns.</summary>
     internal enum SortColumn
     {
@@ -79,7 +86,13 @@ public partial class MainWindow : Window
             ThemeManager.ApplyTitleBar(this);
             UpdateCommandStates();
             UpdateStatus();
+            StretchLastColumn();
         };
+
+        // The grid's columns are fixed widths, so the trailing one has to be recomputed whenever the
+        // list changes size or the scrollbar appears and disappears.
+        FileList.SizeChanged += (_, _) => StretchLastColumn();
+        FileList.LayoutUpdated += (_, _) => StretchLastColumn();
         Closing += OnClosing;
         Closed += (_, _) => ThemeManager.Changed -= OnThemeChanged;
     }
@@ -88,20 +101,76 @@ public partial class MainWindow : Window
 
     private void RestoreColumnWidths()
     {
-        ColumnName.Width = Math.Max(120, _settings.ColumnNameWidth);
-        ColumnSize.Width = Math.Max(60, _settings.ColumnSizeWidth);
-        ColumnFormat.Width = Math.Max(50, _settings.ColumnFormatWidth);
-        ColumnCompression.Width = Math.Max(70, _settings.ColumnCompressionWidth);
+        _preferredName = Math.Max(120, _settings.ColumnNameWidth);
+        _preferredSize = Math.Max(60, _settings.ColumnSizeWidth);
+        _preferredFormat = Math.Max(50, _settings.ColumnFormatWidth);
+        _preferredCompression = Math.Max(70, _settings.ColumnCompressionWidth);
+
+        ColumnName.Width = _preferredName;
+        ColumnSize.Width = _preferredSize;
+        ColumnFormat.Width = _preferredFormat;
+        ColumnCompression.Width = _preferredCompression;
+    }
+
+    /// <summary>
+    /// Give the last column whatever width the other three leave, so the grid's columns span the list
+    /// rather than stopping part way across and leaving a band of empty space to their right.
+    /// <para>
+    /// The user's remembered widths are the basis, not the result: this widens only the trailing column,
+    /// so dragging a column edge still means what it did and the stored widths stay meaningful on a
+    /// window of any size.
+    /// </para>
+    /// </summary>
+    private void StretchLastColumn()
+    {
+        if (_preferredName <= 0) return;   // widths not restored yet
+        if (FileList.ActualWidth <= 0) return;
+
+        // The width the rows actually get, taken from the grid's own presenter rather than derived from
+        // the ListView: the list's margins, its border and the scrollbar all sit between the two, and
+        // guessing at them leaves the columns either short of the edge or overflowing into a horizontal
+        // scrollbar.
+        double available = RowViewportWidth(FileList);
+        if (available <= 0) return;
+
+        double fixedWidth = _preferredName + _preferredSize + _preferredFormat;
+
+        // A margin of several pixels below the exact viewport. GridView measures its rows with a little
+        // padding of its own, so columns that sum to precisely the presenter width still overflow and
+        // raise a horizontal scrollbar; this keeps the trailing column inside that allowance.
+        const double GridSlack = 12;
+        double last = Math.Max(70, available - fixedWidth - GridSlack);
+
+        if (Math.Abs(ColumnCompression.Width - last) > 0.5) ColumnCompression.Width = last;
+    }
+
+    /// <summary>
+    /// The width a GridView's rows are laid out in: the list's viewport once its margins, border and
+    /// vertical scrollbar have been taken off. Zero when the presenter is not in the tree yet.
+    /// </summary>
+    private static double RowViewportWidth(DependencyObject root)
+    {
+        if (root is ScrollContentPresenter presenter)
+            return presenter.ActualWidth;
+
+        int count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < count; i++)
+        {
+            double found = RowViewportWidth(System.Windows.Media.VisualTreeHelper.GetChild(root, i));
+            if (found > 0) return found;
+        }
+        return 0;
     }
 
     private void RememberColumnWidths()
     {
-        // A GridViewColumn's Width is NaN until it has been measured, so an unmeasured column must not
-        // overwrite the remembered value with NaN.
+        // The Compression column is stretched to fill, so its live width is not what the user chose;
+        // remembering it would make the layout drift wider on every save. The preferred value is kept
+        // instead, and only the three fixed columns are read back from the grid.
         if (!double.IsNaN(ColumnName.Width)) _settings.ColumnNameWidth = ColumnName.Width;
         if (!double.IsNaN(ColumnSize.Width)) _settings.ColumnSizeWidth = ColumnSize.Width;
         if (!double.IsNaN(ColumnFormat.Width)) _settings.ColumnFormatWidth = ColumnFormat.Width;
-        if (!double.IsNaN(ColumnCompression.Width)) _settings.ColumnCompressionWidth = ColumnCompression.Width;
+        if (_preferredCompression > 0) _settings.ColumnCompressionWidth = _preferredCompression;
     }
 
     private void RestoreWindowState()
@@ -775,7 +844,8 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// Load an archive without any dialog or confirmation. Used by the <c>--uitest</c> smoke check, so
-    /// the load path it exercises is the same one the File menu uses.
+    /// the load path it exercises is the same one the File menu uses. A path that does not exist leaves
+    /// the view empty, which is how the empty state is put on screen for a check.
     /// </summary>
     internal void UiTestLoad(string path) => UiTestLoadMany(new[] { path });
     /// <summary>The same for several archives, which is what <c>--show</c> uses to preload a session.</summary>
@@ -803,6 +873,62 @@ public partial class MainWindow : Window
     {
         var row = _workspace.AllFiles.FirstOrDefault(f => f.Kind == VfsNodeKind.File);
         if (row is not null) _workspace.StageDelete(new[] { row });
+    }
+
+    /// <summary>
+    /// The elements whose laid-out geometry the layout check reports, so the list filling the window
+    /// and the empty message being centred can be verified rather than eyeballed.
+    /// </summary>
+    internal IEnumerable<(string Name, FrameworkElement? Element)> UiTestLayoutProbe()
+    {
+        yield return ("FileList", FileList);
+        yield return ("EmptyState", EmptyState);
+        yield return ("ColumnName", null);   // columns are not FrameworkElements; reported for context
+    }
+
+    /// <summary>
+    /// The numbers the column-stretch maths runs on, so a horizontal scrollbar can be diagnosed from
+    /// measurements rather than guessed at.
+    /// </summary>
+    internal IEnumerable<string> UiTestColumnProbe()
+    {
+        double viewport = RowViewportWidth(FileList);
+        yield return $"viewport              {viewport,6:0}";
+        yield return $"list actual           {FileList.ActualWidth,6:0}";
+        yield return $"col name              {ColumnName.Width,6:0}";
+        yield return $"col size              {ColumnSize.Width,6:0}";
+        yield return $"col format            {ColumnFormat.Width,6:0}";
+        yield return $"col compression       {ColumnCompression.Width,6:0}";
+        yield return $"columns total         {ColumnName.Width + ColumnSize.Width + ColumnFormat.Width + ColumnCompression.Width,6:0}";
+        yield return $"overflow              {ColumnName.Width + ColumnSize.Width + ColumnFormat.Width + ColumnCompression.Width - viewport,6:0}";
+    }
+
+    /// <summary>
+    /// Load a small generated archive, so a layout check can measure the list as the user sees it. The
+    /// empty state hides the list, and a collapsed element reports no width, so the "does the list fill
+    /// the panel" question cannot be answered with nothing loaded.
+    /// </summary>
+    internal void UiTestLoadArchivesForLayoutCheck()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "pkztool_layoutcheck_" + Guid.NewGuid().ToString("N") + ".pkz");
+        try
+        {
+            var files = new List<PkzTool.Core.Archives.PkzFile>();
+            for (int i = 0; i < 40; i++)
+                files.Add(new PkzTool.Core.Archives.PkzFile(
+                    "d" + (i % 4) + "/file" + i + ".dat",
+                    System.Text.Encoding.UTF8.GetBytes("layout check"),
+                    PkzTool.Core.Archives.EntryCompression.None, 0));
+
+            PkzTool.Core.Archives.PkzWriter.WriteFile(path, files, null);
+
+            // Through the real load path, so the rows the check measures are the rows a user gets.
+            UiTestLoadMany(new[] { path });
+        }
+        finally
+        {
+            try { File.Delete(path); } catch (IOException) { /* the view holds it open; harmless */ }
+        }
     }
 
     /// <summary>A one-line summary of what the list is showing, for the smoke check to assert on.</summary>

@@ -22,6 +22,12 @@ public partial class App : Application
         if (Settings.Theme == AppTheme.System)
             Settings.Theme = ThemeManager.SystemPrefersDark() ? AppTheme.Dark : AppTheme.Light;
 
+        // A check that opens several windows in turn closes each one before opening the next. With the
+        // default OnLastWindowClose that first Close starts shutting the application down, and every
+        // window after it lays out as a zero-sized husk. Explicit shutdown keeps the sequence valid;
+        // the exit code decides when a headless run is over.
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
         // Any argument means headless, so this decision is made from the argument count alone. The
         // console streams are attached first so a headless run's output is visible even though the
         // process is a WinExe with no console of its own.
@@ -92,6 +98,30 @@ public partial class App : Application
                 string which = capture + 1 < args.Length ? args[capture + 1] : "settings";
                 string to = capture + 2 < args.Length ? args[capture + 2] : "dialog.png";
                 return DialogMeasure.Capture(which, to, console.Out);
+            }
+
+            // --capture-main renders the main window, and --main-layout reports its geometry.
+            int captureMain = Array.FindIndex(args, a => string.Equals(a, "--capture-main", StringComparison.OrdinalIgnoreCase));
+            if (captureMain >= 0)
+            {
+                ThemeManager.Initialize(Settings.Theme);
+                string? archive = captureMain + 1 < args.Length && !args[captureMain + 1].StartsWith('-')
+                    ? args[captureMain + 1] : null;
+                string to = captureMain + 2 < args.Length ? args[captureMain + 2] : "main.png";
+                return DialogMeasure.CaptureMain(archive, to, console.Out);
+            }
+
+            if (args.Any(a => string.Equals(a, "--check-main-layout", StringComparison.OrdinalIgnoreCase)))
+            {
+                ThemeManager.Initialize(Settings.Theme);
+                return DialogMeasure.CheckMainLayout(console.Out);
+            }
+
+            if (args.Any(a => string.Equals(a, "--main-layout", StringComparison.OrdinalIgnoreCase)))
+            {
+                ThemeManager.Initialize(Settings.Theme);
+                string? archive = args.FirstOrDefault(a => a.EndsWith(".pkz", StringComparison.OrdinalIgnoreCase));
+                return DialogMeasure.ReportMainLayout(archive, console.Out);
             }
 
             // --uitest builds the shell and every dialog headlessly, which is the only way to prove the

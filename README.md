@@ -300,9 +300,26 @@ or a constructor that throws.
 is resizable, and shows its own button row. This is the check for the class of bug where a dialog's
 content grows past its fixed height and the bottom row — the buttons — becomes unreachable.
 
-`--capture-dialog <name> <out.png>` renders one dialog to a PNG, so a layout can be looked at rather
-than only asserted about. Names: `about`, `compression`, `overwrite`, `textprompt`, `oodle`,
-`pkzpick`, `settings`.
+`--check-main-layout` lays the main window out at three sizes and reports whether the list fills the
+panel, whether the empty message is centred in it, and whether the columns fit without a horizontal
+scrollbar. `--main-layout [pkz]` prints the same geometry as raw numbers, for when a figure looks
+wrong.
+
+`--capture-main [pkz] <out.png>` renders the main window, and `--capture-dialog <name> <out.png>` one
+dialog. Names for the latter: `about`, `compression`, `overwrite`, `textprompt`, `oodle`, `pkzpick`,
+`settings`. These exist because a layout can pass every assertion and still look wrong: the About
+dialog's button check passed while a screenshot showed the button clipped.
+
+### Main window layout
+
+The list and the empty-state message share one `Grid` cell. They must not be siblings in a
+`DockPanel`: a `DockPanel` stretches only its last child, so with the message listed second the list
+was sized to its own content — it covered barely half the window — and the message centred within
+that half rather than the window.
+
+The four columns are fixed widths, and the trailing one is stretched to fill whatever the others
+leave, so the columns span the list instead of stopping part way across. The user's remembered
+widths are the *basis* for that, not the result, so dragging a column edge still means what it did.
 
 ### Dialog sizing
 
