@@ -653,15 +653,15 @@ internal static class DialogMeasure
                 Dialogs.MessageKind.Error, Dialogs.MessageButtons.Ok),
             ("warning", "Some files were skipped", "3 file(s) could not be read:",
                 "pl/a.dat\npl/b.dat\npl/c.dat", Dialogs.MessageKind.Warning, Dialogs.MessageButtons.Ok),
-            ("question", "Unsaved changes", "There are 2 staged changes that have not been saved.",
-                string.Empty, Dialogs.MessageKind.Question, Dialogs.MessageButtons.YesNoCancel),
+            ("yesnocancel", "Unsaved changes", "There are 2 staged changes that have not been saved.",
+                "Save before closing?", Dialogs.MessageKind.Question, Dialogs.MessageButtons.YesNoCancel),
             ("yesno", "Name collision", "1 file already exists. Overwrite it?",
                 string.Empty, Dialogs.MessageKind.Question, Dialogs.MessageButtons.YesNo),
         };
 
         int problems = 0;
-        log("dialog     windowH  detailShown  buttons  themed  verdict");
-        log("---------------------------------------------------------");
+        log("dialog     windowH  detailShown  visibleButtons  labels  verdict");
+        log("----------------------------------------------------------------");
 
         foreach (var c in cases)
         {
@@ -683,15 +683,27 @@ internal static class DialogMeasure
             bool detailShown = detailCard?.Visibility == Visibility.Visible;
             bool detailExpected = !string.IsNullOrWhiteSpace(c.Detail);
 
-            bool buttonsOk = buttons.Count >= (c.Buttons == Dialogs.MessageButtons.Ok ? 1 : 2);
+            // Count the buttons the user can actually see. Counting every Button in the tree passed even
+            // when the extra control was Collapsed, which is exactly how a three-way question lost its No
+            // answer while still reporting three buttons.
+            var visible = buttons.Where(b => b.Visibility == Visibility.Visible).ToList();
+            var labels = string.Join("/", visible.Select(b => b.Content?.ToString()));
+
+            int expected = c.Buttons switch
+            {
+                Dialogs.MessageButtons.Ok => 1,
+                Dialogs.MessageButtons.YesNoCancel => 3,
+                _ => 2,
+            };
+            bool buttonsOk = visible.Count == expected;
             bool fits = window.ActualHeight <= SystemParameters.WorkArea.Height;
             bool noEmptyCard = detailShown == detailExpected;
 
             bool ok = themed && buttonsOk && fits && noEmptyCard;
             if (!ok) problems++;
 
-            log($"{c.Name,-10} {window.ActualHeight,7:0}  {detailShown,11}  {buttons.Count,7}  " +
-                $"{themed,6}  " + (ok ? "ok" : "PROBLEM"));
+            log($"{c.Name,-10} {window.ActualHeight,7:0}  {detailShown,11}  {visible.Count,14}  " +
+                $"{labels,-16}  " + (ok ? "ok" : "PROBLEM"));
 
             window.Close();
         }
@@ -894,6 +906,51 @@ internal static class DialogMeasure
             : $"{problems} misleading empty state(s)");
         return problems == 0 ? 0 : 1;
     }
+    /// <summary>
+    /// Check that each button of a three-way question returns the answer the caller branches on, and
+    /// that dismissing the window gives the safe one.
+    /// </summary>
+    internal static int CheckPromptAnswers(Action<string> log)
+    {
+        var cases = new (Dialogs.MessageButtons Buttons, string Click, MessageBoxResult Expected)[]
+        {
+            (Dialogs.MessageButtons.YesNoCancel, "AcceptButton", MessageBoxResult.Yes),
+            (Dialogs.MessageButtons.YesNoCancel, "DismissButton", MessageBoxResult.No),
+            (Dialogs.MessageButtons.YesNoCancel, "CancelButton", MessageBoxResult.Cancel),
+            (Dialogs.MessageButtons.YesNo, "AcceptButton", MessageBoxResult.Yes),
+            (Dialogs.MessageButtons.YesNo, "DismissButton", MessageBoxResult.No),
+            (Dialogs.MessageButtons.OkCancel, "AcceptButton", MessageBoxResult.OK),
+            (Dialogs.MessageButtons.OkCancel, "CancelButton", MessageBoxResult.Cancel),
+            (Dialogs.MessageButtons.Ok, "AcceptButton", MessageBoxResult.OK),
+        };
+
+        int problems = 0;
+        foreach (var c in cases)
+        {
+            var dialog = new Dialogs.MessageDialog();
+            dialog.UiTestConfigure("Heading", "Body", string.Empty,
+                Dialogs.MessageKind.Question, c.Buttons);
+
+            var button = (System.Windows.Controls.Button)dialog.FindName(c.Click)!;
+            if (button.Visibility != Visibility.Visible)
+            {
+                problems++;
+                log($"FAIL {c.Buttons}/{c.Click}: the button is not shown");
+                continue;
+            }
+
+            var answer = dialog.UiTestPress(c.Click);
+            bool ok = answer == c.Expected;
+            if (!ok) problems++;
+            log($"{(ok ? "ok  " : "FAIL")} {c.Buttons,-12} {c.Click,-13} -> {answer}");
+        }
+
+        log(string.Empty);
+        log(problems == 0
+            ? "every prompt button returns the answer its caller expects"
+            : $"{problems} prompt answer(s) wrong");
+        return problems == 0 ? 0 : 1;
+    }
     /// <summary>Build a message dialog for the capture check, without showing it.</summary>
     private static Window BuildMessageDialog(string heading, string body, string detail,
         Dialogs.MessageKind kind, Dialogs.MessageButtons buttons)
@@ -927,6 +984,9 @@ internal static class DialogMeasure
                 "3 file(s) could not be read:", "pl/a.dat\npl/b.dat\npl/c.dat",
                 Dialogs.MessageKind.Warning, Dialogs.MessageButtons.Ok),
             "question" => BuildMessageDialog("Unsaved changes",
+                "There are 2 staged changes that have not been saved.\n\nSave before closing?",
+                string.Empty, Dialogs.MessageKind.Question, Dialogs.MessageButtons.YesNoCancel),
+            "yesnocancel" => BuildMessageDialog("Unsaved changes",
                 "There are 2 staged changes that have not been saved.\n\nSave before closing?",
                 string.Empty, Dialogs.MessageKind.Question, Dialogs.MessageButtons.YesNoCancel),
             _ => new SettingsDialog(new Core.Settings.PkzSettings()),

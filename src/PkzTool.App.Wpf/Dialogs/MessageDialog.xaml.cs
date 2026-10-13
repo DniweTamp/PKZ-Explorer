@@ -80,9 +80,9 @@ public partial class MessageDialog : ThemedDialog
 
         if (SuppressPrompts)
         {
-            // What Enter would give: the affirmative button for the button sets, else the one that does
-            // nothing destructive. A headless run must not treat a prompt as a decision to proceed with
-            // something destructive.
+            // The safe answer, not Enter's: a headless run must never take a prompt as permission to do
+            // something destructive. Cancel and No both mean "do not go ahead", which is why a prompt
+            // reaching this path aborts its operation rather than performing it.
             return buttons switch
             {
                 MessageButtons.OkCancel => MessageBoxResult.Cancel,
@@ -92,11 +92,7 @@ public partial class MessageDialog : ThemedDialog
             };
         }
 
-        var dialog = new MessageDialog
-        {
-            _buttons = buttons,
-            Owner = owner,
-        };
+        var dialog = new MessageDialog { Owner = owner };
 
         dialog.Heading.Text = heading;
         dialog.Intro.Text = body;
@@ -133,12 +129,26 @@ public partial class MessageDialog : ThemedDialog
         Apply(kind, buttons);
     }
 
+    /// <summary>
+    /// Press a named button without showing the dialog, and report the answer it produced. A check cannot
+    /// click a real window, and the answer is the whole point of the dialog.
+    /// </summary>
+    internal MessageBoxResult UiTestPress(string buttonName)
+    {
+        var button = (System.Windows.Controls.Button)FindName(buttonName)!;
+        button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        return Answer;
+    }
     /// <summary>The answer the user gave, or the default when the window was closed.</summary>
     private MessageBoxResult Answer { get; set; } = MessageBoxResult.Cancel;
 
     /// <summary>Set the glyph, colour and button labels for the requested kind and button set.</summary>
     private void Apply(MessageKind kind, MessageButtons buttons)
     {
+        // Set here rather than only by the Show factory, so the handlers and the labels can never
+        // disagree about which question is being asked — a mismatch made the Yes button answer OK.
+        _buttons = buttons;
+
         (Glyph.Text, string title) = kind switch
         {
             MessageKind.Information => ("\uE946", "Information"),
@@ -163,43 +173,63 @@ public partial class MessageDialog : ThemedDialog
             _ => (System.Windows.Media.Brush)FindResource("Brush.Muted"),
         };
 
-        (AcceptButton.Content, CancelButton.Content, CancelButton.Visibility) = buttons switch
+        // Three slots, filled per button set. The previous version had only two controls and a catch-all
+        // that mapped YesNoCancel onto "Yes"/"Cancel", so a three-way question silently lost its No
+        // answer: the user could save or back out, but not discard.
+        (AcceptButton.Content, DismissButton.Content, DismissButton.Visibility,
+         CancelButton.Content, CancelButton.Visibility) = buttons switch
         {
-            MessageButtons.Ok => ("OK", string.Empty, Visibility.Collapsed),
-            MessageButtons.OkCancel => ("OK", "Cancel", Visibility.Visible),
-            MessageButtons.YesNo => ("Yes", "No", Visibility.Visible),
-            _ => ("Yes", "Cancel", Visibility.Visible),
+            MessageButtons.Ok => ("OK", string.Empty, Visibility.Collapsed, string.Empty, Visibility.Collapsed),
+            MessageButtons.OkCancel => ("OK", string.Empty, Visibility.Collapsed, "Cancel", Visibility.Visible),
+            MessageButtons.YesNo => ("Yes", "No", Visibility.Visible, string.Empty, Visibility.Collapsed),
+            _ => ("Yes", "No", Visibility.Visible, "Cancel", Visibility.Visible),
         };
 
-        // With two buttons the second is a real answer, so it must read as one rather than as a cancel.
-        if (buttons is MessageButtons.YesNo)
-        {
-            CancelButton.IsCancel = false;
-            CancelButton.Content = "No";
-            CancelButton.Click -= OnCancel;
-            CancelButton.Click += OnNo;
-        }
+        // Escape is the cancel button only when there is one; with Yes/No alone, dismissing the window is
+        // a No rather than a silent abandonment.
+        CancelButton.IsCancel = CancelButton.Visibility == Visibility.Visible;
+        if (!CancelButton.IsCancel) CancelButton.Click -= OnCancel;
     }
 
+    /// <summary>
+    /// Close with an answer. Setting DialogResult directly throws unless the window was shown with
+    /// ShowDialog, which makes the buttons untestable without a real window; this sets it only when the
+    /// dialog is actually modal.
+    /// </summary>
+    private void Close(bool result)
+    {
+        if (IsLoaded) DialogResult = result;
+        else Close();
+    }
+    /// <summary>The affirmative button: OK, or Yes.</summary>
     private void OnAccept(object sender, RoutedEventArgs e)
     {
-        Answer = CancelButton.Visibility == Visibility.Visible && _buttons == MessageButtons.OkCancel
-            ? MessageBoxResult.OK
-            : _buttons is MessageButtons.YesNo or MessageButtons.YesNoCancel
-                ? MessageBoxResult.Yes
-                : MessageBoxResult.OK;
-        DialogResult = true;
+        Answer = _buttons is MessageButtons.YesNo or MessageButtons.YesNoCancel
+            ? MessageBoxResult.Yes
+            : MessageBoxResult.OK;
+        Close(true);
     }
 
+    /// <summary>The second answer, which only a yes/no question has.</summary>
     private void OnNo(object sender, RoutedEventArgs e)
     {
         Answer = MessageBoxResult.No;
-        DialogResult = false;
+        Close(false);
     }
 
+    /// <summary>
+    /// The cancel button. Dismissing the window without choosing (the title bar cross, or Escape) also
+    /// lands here, so a question with no cancel button treats that as the negative answer rather than as
+    /// an abandonment the caller cannot distinguish.
+    /// </summary>
     private void OnCancel(object sender, RoutedEventArgs e)
     {
-        Answer = _buttons == MessageButtons.YesNo ? MessageBoxResult.No : MessageBoxResult.Cancel;
-        DialogResult = false;
+        Answer = _buttons switch
+        {
+            MessageButtons.YesNo => MessageBoxResult.No,
+            MessageButtons.YesNoCancel => MessageBoxResult.Cancel,
+            _ => MessageBoxResult.Cancel,
+        };
+        Close(false);
     }
 }

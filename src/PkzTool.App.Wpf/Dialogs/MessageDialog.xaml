@@ -41,7 +41,11 @@
             </ScrollViewer>
         </Border>
 
+        <!-- Three slots, because a yes/no/cancel question needs three answers. The middle one is the
+             second answer when there is one ("No"), and hidden otherwise. -->
         <StackPanel Grid.Row="3" Style="{StaticResource DialogButtonRow}" Margin="0,18,0,0">
+            <Button x:Name="DismissButton" Style="{StaticResource PillButton}" Content="No"
+                    Click="OnNo" MinWidth="88" Margin="0,0,8,0" Visibility="Collapsed" />
             <Button x:Name="CancelButton" Style="{StaticResource PillButton}" Content="Cancel"
                     Click="OnCancel" IsCancel="True" MinWidth="88" Margin="0,0,8,0" />
             <Button x:Name="AcceptButton" Style="{StaticResource PillButton}" Content="OK"

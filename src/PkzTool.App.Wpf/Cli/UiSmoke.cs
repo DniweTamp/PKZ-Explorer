@@ -179,6 +179,7 @@ internal static class UiSmoke
                      ("message dialogs are themed and cannot block", DialogMeasure.CheckMessageDialogs),
                      ("search finds files in collapsed folders", DialogMeasure.CheckSearchFindsCollapsed),
                      ("the empty state tells the truth", DialogMeasure.CheckEmptyStateIsHonest),
+                     ("prompt buttons return the right answer", DialogMeasure.CheckPromptAnswers),
                  })
         {
             var lines = new List<string>();

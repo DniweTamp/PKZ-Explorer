@@ -318,6 +318,12 @@ public partial class App : Application
                 string outPath = ci + 2 < args.Length ? args[ci + 2] : "search-empty.png";
                 return DialogMeasure.CaptureSearchEmpty(pkzPath, outPath, console.Out);
             }
+            if (args.Any(a => string.Equals(a, "--check-prompt-answers", StringComparison.OrdinalIgnoreCase)))
+            {
+                ThemeManager.Initialize(Settings.Theme);
+                return DialogMeasure.CheckPromptAnswers(console.Out);
+            }
+
             if (args.Any(a => string.Equals(a, "--check-empty-state", StringComparison.OrdinalIgnoreCase)))
             {
                 ThemeManager.Initialize(Settings.Theme);

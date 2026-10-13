@@ -322,6 +322,9 @@ get their own message, and only the first claims no archive is open.
 `--check-search` confirms a file inside a collapsed folder is found, and that clearing the search
 restores the collapsed view.
 
+`--check-prompt-answers` confirms every button of every prompt returns the answer its caller branches
+on — the Yes button of a three-way question once answered OK, which the caller read as Cancel.
+
 `--check-messages` confirms every prompt is themed, sized to its content, shows its detail card only
 when there is a detail, and returns immediately when suppressed instead of blocking a headless run.
 
@@ -374,6 +377,10 @@ Every prompt goes through `Prompt.Show`, which draws the themed `MessageDialog` 
 `MessageBox`. The system dialog ignores the palette and looks nothing like the rest of the tool; this
 one uses the same cards, glyphs and pill buttons as every other dialog, tints its heading by severity,
 and shows a scrolling monospace block for the detail — a failed load can list many files.
+
+A question with three answers offers three buttons — **No**, Cancel, Yes. Asking "Save before closing?"
+with only Yes and Cancel left no way to say "close without saving", which is a different intention from
+changing your mind.
 
 A prompt also never blocks a headless run. `Prompt.Suppress` is set for any headless invocation, so
 instead of waiting for a click that will never come, a prompt records what it was asked and returns the
