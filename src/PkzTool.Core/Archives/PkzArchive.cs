@@ -158,6 +158,13 @@ public sealed class PkzArchive : IDisposable
                 if (dataOffset > (ulong)stream.Length || compressed > (ulong)stream.Length - dataOffset)
                     throw new InvalidDataException(
                         $"{path}: entry {i} data range 0x{dataOffset:X}+{compressed} lies outside the file");
+                if (decompressed > int.MaxValue)
+                    throw new InvalidDataException(
+                        $"{path}: entry {i} decompressed size {decompressed} exceeds the 2 GB limit");
+                if ((ulong)stringBase + nameOffset >= (ulong)stream.Length ||
+                    (ulong)stringBase + compOffset >= (ulong)stream.Length)
+                    throw new InvalidDataException(
+                        $"{path}: entry {i} string offset lies outside the file");
 
                 string name = ReadCString(stream, stringBase + nameOffset);
                 string comp = ReadCString(stream, stringBase + compOffset);

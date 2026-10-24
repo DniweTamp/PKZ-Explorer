@@ -53,8 +53,8 @@ public sealed class PkzSettings
     /// <summary>Remembered width of the file-format column.</summary>
     public double ColumnFormatWidth { get; set; } = 90;
 
-    /// <summary>Remembered width of the compression column.</summary>
-    public double ColumnCompressionWidth { get; set; } = 120;
+    /// <summary>Remembered user-dragged width of the compression column; 0 means auto-fill.</summary>
+    public double ColumnCompressionWidth { get; set; } = 0;
 
     /// <summary>Whether the window opens maximised.</summary>
     public bool Maximized { get; set; }

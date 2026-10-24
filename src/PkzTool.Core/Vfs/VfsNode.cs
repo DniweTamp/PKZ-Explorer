@@ -1,5 +1,6 @@
 using PkzTool.Core.Archives;
 using PkzTool.Core.Compression;
+using PkzTool.Core.Workspace;
 
 namespace PkzTool.Core.Vfs;
 
@@ -57,6 +58,9 @@ public sealed class VfsNode
 
     /// <summary>The archive backing this row, or null for a file added in this session.</summary>
     public PkzArchive? Owner { get; internal set; }
+
+    /// <summary>Stable wrapper reference across archive handle reopens during Save.</summary>
+    internal LoadedArchive? LoadedOwner { get; set; }
 
     /// <summary>The archive entry backing this row, or null for an added file.</summary>
     public PkzEntry? Entry { get; internal set; }

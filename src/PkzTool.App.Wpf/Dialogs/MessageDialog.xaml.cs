@@ -148,6 +148,7 @@ public partial class MessageDialog : ThemedDialog
         // Set here rather than only by the Show factory, so the handlers and the labels can never
         // disagree about which question is being asked — a mismatch made the Yes button answer OK.
         _buttons = buttons;
+        Answer = buttons == MessageButtons.YesNo ? MessageBoxResult.No : MessageBoxResult.Cancel;
 
         (Glyph.Text, string title) = kind switch
         {
@@ -188,7 +189,7 @@ public partial class MessageDialog : ThemedDialog
         // Escape is the cancel button only when there is one; with Yes/No alone, dismissing the window is
         // a No rather than a silent abandonment.
         CancelButton.IsCancel = CancelButton.Visibility == Visibility.Visible;
-        if (!CancelButton.IsCancel) CancelButton.Click -= OnCancel;
+        DismissButton.IsCancel = !CancelButton.IsCancel && DismissButton.Visibility == Visibility.Visible;
     }
 
     /// <summary>

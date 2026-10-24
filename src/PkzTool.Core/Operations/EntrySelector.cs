@@ -54,7 +54,7 @@ public static class EntrySelector
             var byQualified = files
                 .Where(f => NamesFor(f).Any(n => string.Equals(n, normalized, StringComparison.OrdinalIgnoreCase)))
                 .ToList();
-            return byQualified;
+            if (byQualified.Count > 0) return byQualified;
         }
 
         // An exact bare path matches every archive that holds it, which is what makes a plain
@@ -66,13 +66,11 @@ public static class EntrySelector
 
         // A folder selector takes the subtree; a path that names no folder but has no wildcard either
         // simply matches nothing, which the caller reports.
-        if (!HasWildcard(normalized))
-        {
-            var under = files
-                .Where(f => VirtualPath.IsUnderOrEqual(f.Path, normalized))
-                .ToList();
+        var under = files
+            .Where(f => VirtualPath.IsUnderOrEqual(f.Path, normalized))
+            .ToList();
+        if (under.Count > 0 || !HasWildcard(normalized))
             return under;
-        }
 
         var regex = new Regex(GlobToRegex(normalized), RegexOptions.IgnoreCase);
         return files.Where(f => regex.IsMatch(f.Path)).ToList();
@@ -147,8 +145,15 @@ public static class EntrySelector
                         break;
                     }
                     string inner = glob[(i + 1)..close];
+                    if (inner.Length == 0 || inner is "!" or "^")
+                    {
+                        pattern.Append(Regex.Escape(glob[i..(close + 1)]));
+                        i = close;
+                        break;
+                    }
                     // A leading ! or ^ negates, matching the common shell convention.
                     if (inner.StartsWith('!')) inner = "^" + inner[1..];
+                    if (inner.StartsWith('^') && !inner.Contains('/')) inner += "/";
                     pattern.Append('[').Append(inner).Append(']');
                     i = close;
                     break;

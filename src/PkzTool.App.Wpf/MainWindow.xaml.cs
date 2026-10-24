@@ -172,7 +172,9 @@ public partial class MainWindow : Window
         double available = RowViewportWidth(FileList);
         if (available <= 0) return;
 
-        double fixedWidth = _preferredName + _preferredSize + _preferredFormat;
+        double fixedWidth = (double.IsNaN(ColumnName.Width) ? _preferredName : ColumnName.Width)
+                          + (double.IsNaN(ColumnSize.Width) ? _preferredSize : ColumnSize.Width)
+                          + (double.IsNaN(ColumnFormat.Width) ? _preferredFormat : ColumnFormat.Width);
 
         // A margin of several pixels below the exact viewport. GridView measures its rows with a little
         // padding of its own, so columns that sum to precisely the presenter width still overflow and
@@ -193,7 +195,6 @@ public partial class MainWindow : Window
         if (Math.Abs(ColumnCompression.Width - target) > 0.5) ColumnCompression.Width = target;
     }
 
-    /// <summary>
     /// <summary>
     /// Record a user drag of the trailing column, so the fill respects it instead of overwriting it.
     /// Called once the drag finishes, which is when the width is the user's choice rather than a value
@@ -244,9 +245,19 @@ public partial class MainWindow : Window
     private void OnColumnHeaderDragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e)
     {
         if (e.OriginalSource is System.Windows.Controls.Primitives.Thumb thumb
-            && ReferenceEquals(thumb.TemplatedParent, ColumnCompression.Header))
+            && thumb.TemplatedParent is GridViewColumnHeader header)
         {
-            RememberCompressionDrag();
+            if (ReferenceEquals(header.Column, ColumnCompression))
+            {
+                RememberCompressionDrag();
+            }
+            else
+            {
+                if (!double.IsNaN(ColumnName.Width)) _preferredName = ColumnName.Width;
+                if (!double.IsNaN(ColumnSize.Width)) _preferredSize = ColumnSize.Width;
+                if (!double.IsNaN(ColumnFormat.Width)) _preferredFormat = ColumnFormat.Width;
+                StretchLastColumn();
+            }
         }
     }
 
@@ -263,6 +274,13 @@ public partial class MainWindow : Window
 
     private void OnClosing(object? sender, CancelEventArgs e)
     {
+        if (_operation is not null)
+        {
+            _operation.Cancel();
+            e.Cancel = true;
+            return;
+        }
+
         // A headless run must never raise a prompt: it has nobody to answer one, so a modal dialog
         // there would hang the process instead of reporting the failure it was checking for.
         if (_headless)
@@ -308,15 +326,18 @@ public partial class MainWindow : Window
         {
             var result = _workspace.Load(paths, _settings.ResolveOodleDll(), token);
 
+            var succeeded = paths
+                .Where(p => !result.Failures.Any(f => string.Equals(f.Path, p, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
             // Remember the files that loaded, newest first, so Open Recent offers them again.
-            foreach (var directory in paths
-                         .Where(p => !result.Failures.Any(f => string.Equals(f.Path, p, StringComparison.OrdinalIgnoreCase)))
+            foreach (var directory in succeeded
                          .Select(Path.GetDirectoryName)
                          .Where(d => !string.IsNullOrEmpty(d))
                          .Distinct())
                 _settings.LastDirectory = directory;
 
-            foreach (var path in paths) _settings.RememberRecent(path);
+            foreach (var path in succeeded) _settings.RememberRecent(path);
             _settings.Save();
             return result;
         });
@@ -391,13 +412,6 @@ public partial class MainWindow : Window
         foreach (var file in folder.ChildFiles) CollectRows(file, childDepth);
     }
 
-    /// <summary>
-    /// Apply the search box and the column sort to <see cref="_allRows"/>, then publish the result.
-    /// <para>
-    /// Filtering keeps a folder row whenever anything under it matches, so a match is never shown
-    /// without the path that leads to it.
-    /// </para>
-    /// </summary>
     /// <summary>
     /// Show the panel that fills the list area when there are no rows, with the message that matches
     /// why it is empty.
@@ -766,9 +780,10 @@ public partial class MainWindow : Window
             : string.Join(", ", _workspace.Archives.Select(a => a.FileName));
         Title = $"PKZ Explorer \u2014 {names}{(modified ? " *" : string.Empty)}";
 
+        int shownFiles = _rows.Count(r => !r.IsFolder);
         StatusLeft.Text = _workspace.Archives.Count == 0
             ? "Open a pkz file to begin."
-            : $"{_rows.Count} of {_workspace.AllFiles.Count()} entries shown \u2014 {_workspace.Archives.Count} pkz loaded";
+            : $"{shownFiles} of {_workspace.AllFiles.Count()} entries shown \u2014 {_workspace.Archives.Count} pkz loaded";
 
         int staged = _workspace.ModifiedArchives.Count();
         int edits = _workspace.Archives.Sum(a => a.Edits.Count);
@@ -993,7 +1008,7 @@ public partial class MainWindow : Window
     /// the view empty, which is how the empty state is put on screen for a check.
     /// </summary>
     internal void UiTestLoad(string path) => UiTestLoadMany(new[] { path });
-    /// <summary>The same for several archives, which is what <c>--show</c> uses to preload a session.</summary>
+
     /// <summary>
     /// Open the given archives, without a progress strip or a failure report. Used at startup, when the
     /// window is not yet on screen and there is no staged work to lose, and by the smoke checks.
@@ -1037,10 +1052,6 @@ public partial class MainWindow : Window
         return result;
     }
 
-    /// <summary>
-    /// Report archives that would not load. Shown after the window is visible, because a prompt raised
-    /// from the constructor would appear before the window it belongs to.
-    /// </summary>
     /// <summary>
     /// How many modal prompts this window has raised, and what the last one said. The load-failure
     /// report is a modal dialog, so who it is shown to cannot be observed from the return value alone —

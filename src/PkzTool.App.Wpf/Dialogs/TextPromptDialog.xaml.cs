@@ -50,7 +50,7 @@ public partial class TextPromptDialog : ThemedDialog
 
         string name = Value;
         string? problem = name.Length == 0 ? "Enter a name." : VirtualPath.ValidateSegment(name);
-        bool unchanged = VirtualPath.CompareEqual(name, _original);
+        bool unchanged = string.Equals(name, _original, StringComparison.Ordinal);
 
         // Renaming to the current name is not an error worth a warning, but it is not a change either,
         // so OK stays disabled and the hint says why.

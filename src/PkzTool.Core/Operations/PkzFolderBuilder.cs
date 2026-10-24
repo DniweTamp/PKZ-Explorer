@@ -63,15 +63,20 @@ public static class PkzFolderBuilder
         if (pkzFiles.Count == 0)
             throw new InvalidOperationException("every file in the folder failed to read");
 
+        int fileCount = pkzFiles.Count;
         progress?.Invoke(new OperationProgress(files.Count, files.Count, "Compressing"));
-        byte[] archive = PkzWriter.Build(pkzFiles, oodleDllPath, forceCompression,
+        var packed = PkzWriter.Pack(pkzFiles, oodleDllPath, forceCompression,
             (done, count) => progress?.Invoke(new OperationProgress(done, count, "Compressing")),
             cancellationToken);
+        pkzFiles.Clear();
 
-        progress?.Invoke(new OperationProgress(files.Count, files.Count, "Writing"));
-        PkzWriter.WriteBytes(destination, archive);
+        progress?.Invoke(new OperationProgress(0, packed.Count, "Writing"));
+        PkzWriter.LayoutToFile(destination, packed,
+            (done, count) => progress?.Invoke(new OperationProgress(done, count, "Writing")),
+            cancellationToken);
         progress?.Invoke(new OperationProgress(files.Count, files.Count, "Done"));
 
-        return new BuildResult(pkzFiles.Count, total, archive.LongLength, errors);
+        long archiveBytes = new FileInfo(Path.GetFullPath(destination)).Length;
+        return new BuildResult(fileCount, total, archiveBytes, errors);
     }
 }

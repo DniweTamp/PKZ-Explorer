@@ -68,6 +68,7 @@ public partial class MainWindow
 
     private void OnMenuOpen(object sender, RoutedEventArgs e)
     {
+        if (_operation is not null) return;
         var dialog = new OpenFileDialog
         {
             Title = "Open pkz files",
@@ -115,6 +116,7 @@ public partial class MainWindow
 
     private void OnMenuSaveAs(object sender, RoutedEventArgs e)
     {
+        if (_operation is not null) return;
         if (_workspace.Archives.Count == 0) return;
 
         // A save dialog per loaded pkz, as the brief specifies.
@@ -156,6 +158,7 @@ public partial class MainWindow
 
     private void OnMenuCloseAll(object sender, RoutedEventArgs e)
     {
+        if (_operation is not null) return;
         if (!ConfirmDiscardStagedEdits("closing the view")) return;
         _workspace.Clear();
         _expanded.Clear();
@@ -169,6 +172,7 @@ public partial class MainWindow
 
     private void OnMenuFromFolder(object sender, RoutedEventArgs e)
     {
+        if (_operation is not null) return;
         var folderDialog = new OpenFolderDialog
         {
             Title = "Choose the folder to pack",
@@ -223,6 +227,7 @@ public partial class MainWindow
 
     private void OnExtractSelected(object sender, RoutedEventArgs e)
     {
+        if (_operation is not null) return;
         var files = SelectedFiles();
         if (files.Count == 0) return;
         Extract(files);
@@ -230,6 +235,7 @@ public partial class MainWindow
 
     private void OnExtractAll(object sender, RoutedEventArgs e)
     {
+        if (_operation is not null) return;
         var all = _workspace.AllFiles.ToList();
         if (all.Count == 0) return;
         Extract(all);
@@ -267,8 +273,7 @@ public partial class MainWindow
             choice = answer.Value;
         }
 
-        // The extraction worker runs off the UI thread, so the prompt is already resolved into a
-        // constant decision here.
+        // The prompt is resolved into a constant decision before the extraction loop begins.
         OverwriteAction Decide(string _) => choice == OverwriteAnswer.Overwrite
             ? OverwriteAction.Overwrite
             : OverwriteAction.Skip;
@@ -292,6 +297,7 @@ public partial class MainWindow
 
     private void OnReplace(object sender, RoutedEventArgs e)
     {
+        if (_operation is not null) return;
         var selection = SelectedNodes();
         // Replace is single-selection only and disabled on folders.
         if (selection.Count != 1 || selection[0].Kind != VfsNodeKind.File) return;
@@ -340,6 +346,7 @@ public partial class MainWindow
 
     private void OnRecompress(object sender, RoutedEventArgs e)
     {
+        if (_operation is not null) return;
         var files = SelectedFiles();
         if (files.Count == 0) return;
 
@@ -367,6 +374,7 @@ public partial class MainWindow
 
     private void OnAdd(object sender, RoutedEventArgs e)
     {
+        if (_operation is not null) return;
         if (_workspace.Archives.Count == 0) return;
 
         // The target folder follows the selection: a selected folder, else the selected file's folder,
@@ -398,19 +406,24 @@ public partial class MainWindow
         _settings.DefaultLevel = compression.Value.Level;
         _settings.LastDirectory = Path.GetDirectoryName(dialog.FileNames[0]);
 
-        AddFiles(pkz, target.Path, dialog.FileNames,
+        var sources = dialog.FileNames
+            .Select(f => (File: f, RelativeTo: Path.GetDirectoryName(f)!))
+            .ToList();
+        AddFiles(pkz, target.Path, sources,
             compression.Value.Compression, compression.Value.Level, oodle);
     }
 
     /// <summary>
-    /// Stage a set of loose files into a folder of one archive.
+    /// Stage a set of files into a folder of one archive, preserving relative subfolder paths when
+    /// folders are dropped from Explorer.
     /// <para>
     /// Collisions are resolved once for the whole run rather than per file: adding fifty files over
     /// existing names would otherwise raise fifty modal prompts. This matches how Extract asks, and is
     /// the only way a bulk add is usable.
     /// </para>
     /// </summary>
-    private void AddFiles(LoadedArchive archive, string folder, IReadOnlyList<string> files,
+    private void AddFiles(LoadedArchive archive, string folder,
+        IReadOnlyList<(string File, string RelativeTo)> files,
         EntryCompression compression, int level, string? oodle)
     {
         _workspace.OodlePath = oodle;
@@ -418,11 +431,20 @@ public partial class MainWindow
         // Work out the collisions up front so the question can be asked once with a real count.
         var planned = new List<(string File, string Path)>();
         var colliding = new List<(string File, string Path)>();
-        foreach (var file in files)
+        var seenInBatch = new HashSet<string>(VirtualPath.Comparer);
+        foreach (var (file, relativeTo) in files)
         {
-            string path = VirtualPath.Combine(folder, Path.GetFileName(file));
-            if (_workspace.WouldCollide(archive, path)) colliding.Add((file, path));
-            else planned.Add((file, path));
+            string relative = Path.GetRelativePath(relativeTo, file);
+            string leaf = relative.Replace(Path.DirectorySeparatorChar, VirtualPath.Separator)
+                .Replace('\\', VirtualPath.Separator);
+            string? normalized = VirtualPath.Normalize(
+                folder.Length == 0 ? leaf : VirtualPath.Combine(folder, leaf));
+            if (normalized is null) continue;
+
+            if (_workspace.WouldCollide(archive, normalized) || !seenInBatch.Add(normalized))
+                colliding.Add((file, normalized));
+            else
+                planned.Add((file, normalized));
         }
 
         // A colliding file is either overwritten or left alone, for every collision in this run.
@@ -486,6 +508,7 @@ public partial class MainWindow
     /// </summary>
     private void OnRevert(object sender, RoutedEventArgs e)
     {
+        if (_operation is not null) return;
         var selection = SelectedNodes();
         if (selection.Count == 0) return;
 
@@ -504,6 +527,7 @@ public partial class MainWindow
 
     private void OnDelete(object sender, RoutedEventArgs e)
     {
+        if (_operation is not null) return;
         var selection = SelectedNodes();
         if (selection.Count == 0) return;
 
@@ -529,6 +553,7 @@ public partial class MainWindow
 
     private void OnRename(object sender, RoutedEventArgs e)
     {
+        if (_operation is not null) return;
         var selection = SelectedNodes();
         if (selection.Count != 1) return;
 
@@ -545,7 +570,7 @@ public partial class MainWindow
         if (prompt.ShowDialog() != true) return;
 
         string newName = prompt.Value;
-        if (VirtualPath.CompareEqual(newName, current)) return;
+        if (string.Equals(newName, current, StringComparison.Ordinal)) return;
 
         if (VirtualPath.ValidateSegment(newName) is { } error)
         {
@@ -553,22 +578,41 @@ public partial class MainWindow
             return;
         }
 
-        // A rename onto an existing name in that folder of that pkz asks overwrite or cancel.
-        var owner = _workspace.Archives.FirstOrDefault(a => ReferenceEquals(a.Archive, node.Owner));
         string newPath = VirtualPath.WithName(node.Path, newName);
-        if (owner is not null && _workspace.WouldCollide(owner, newPath, node.Key))
+        if (!isFolder)
         {
-            var answer = Prompt.Show(this,
-                $"'{newPath}' already exists in {owner.FileName}.\n\nOverwrite it?",
-                "Name collision", MessageBoxButton.OKCancel, MessageBoxImage.Question);
-            if (answer != MessageBoxResult.OK) return;
+            // A rename onto an existing name in that folder of that pkz asks overwrite or cancel.
+            var owner = _workspace.Archives.FirstOrDefault(a => ReferenceEquals(a.Archive, node.Owner));
+            if (owner is not null && !VirtualPath.CompareEqual(newName, current) &&
+                _workspace.WouldCollide(owner, newPath, node.Key))
+            {
+                var answer = Prompt.Show(this,
+                    $"'{newPath}' already exists in {owner.FileName}.\n\nOverwrite it?",
+                    "Name collision", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+                if (answer != MessageBoxResult.OK) return;
+            }
+        }
+        else if (!VirtualPath.CompareEqual(newName, current))
+        {
+            var collisions = new List<VfsNode>();
+            foreach (var file in node.DescendantFiles())
+            {
+                var owner = _workspace.Archives.FirstOrDefault(a => ReferenceEquals(a.Archive, file.Owner));
+                if (owner is null) continue;
+                string targetFilePath = VirtualPath.RenameFolderSegment(file.Path, node.Path, newPath);
+                if (_workspace.WouldCollide(owner, targetFilePath, file.Key))
+                    collisions.Add(file);
+            }
 
-            // Overwriting means the existing entry goes first, so the archive does not end up with two
-            // entries at the same path.
-            var clash = _workspace.AllFiles.FirstOrDefault(f =>
-                ReferenceEquals(f.Owner, node.Owner) &&
-                VirtualPath.Comparer.Equals(f.Path, newPath));
-            if (clash is not null) _workspace.StageDelete(new[] { clash });
+            if (collisions.Count > 0)
+            {
+                var answer = Prompt.Show(this,
+                    collisions.Count == 1
+                        ? $"1 file under '{newPath}' already exists.\n\nOverwrite it?"
+                        : $"{collisions.Count} files under '{newPath}' already exist.\n\nOverwrite them?",
+                    "Name collision", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+                if (answer != MessageBoxResult.OK) return;
+            }
         }
 
         try
@@ -588,6 +632,7 @@ public partial class MainWindow
 
     private void OnMenuSettings(object sender, RoutedEventArgs e)
     {
+        if (_operation is not null) return;
         var dialog = new SettingsDialog(_settings) { Owner = this };
         if (dialog.ShowDialog() != true) return;
 
@@ -602,7 +647,8 @@ public partial class MainWindow
                 : "Oodle dll: auto-detect";
         }
 
-        UpdateCommandStates();    }
+        UpdateCommandStates();
+    }
 
     private void OnToggleTheme(object sender, RoutedEventArgs e)
     {
@@ -668,6 +714,7 @@ public partial class MainWindow
     /// </summary>
     private void OnListPreviewMouseMove(object sender, MouseEventArgs e)
     {
+        if (_operation is not null) return;
         if (e.LeftButton != MouseButtonState.Pressed || _dragCandidate is null) return;
 
         var current = e.GetPosition(FileList);
@@ -750,6 +797,7 @@ public partial class MainWindow
     /// </summary>
     private void OnWindowDrop(object sender, DragEventArgs e)
     {
+        if (_operation is not null) return;
         if (e.Handled) return;
         if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
         if (e.Data.GetData(DataFormats.FileDrop) is not string[] paths || paths.Length == 0) return;
@@ -772,6 +820,7 @@ public partial class MainWindow
 
     private void OnListDrop(object sender, DragEventArgs e)
     {
+        if (_operation is not null) return;
         // Files dragged in from Explorer follow exactly the same rules as Add.
         if (e.Data.GetDataPresent(DataFormats.FileDrop))
         {
@@ -793,10 +842,6 @@ public partial class MainWindow
     }
 
     /// <summary>
-    /// Add files dropped from Explorer. The target folder and pkz are chosen the same way the Add
-    /// command chooses them, and the compression type is asked for once.
-    /// </summary>
-    /// <summary>
     /// Handle files dropped onto the window from Explorer.
     /// <para>
     /// A dropped pkz is <em>opened</em>, which is what dropping an archive onto the window means and the
@@ -806,6 +851,7 @@ public partial class MainWindow
     /// </summary>
     private void DropFromExplorer(string[] paths)
     {
+        if (_operation is not null) return;
         // Split the drop by what it means: archives to open, everything else to add.
         var archives = paths.Where(p => p.EndsWith(".pkz", StringComparison.OrdinalIgnoreCase)
                                         && File.Exists(p)).ToList();
@@ -842,13 +888,19 @@ public partial class MainWindow
         if (compression.Value.Compression == EntryCompression.OodleKraken && oodle is null) return;
 
         // A dropped folder contributes its contents, matching Add; a bare file keeps its name.
-        var files = new List<string>();
+        var files = new List<(string File, string RelativeTo)>();
         foreach (var path in content)
         {
             if (Directory.Exists(path))
-                files.AddRange(Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories));
+            {
+                foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories)
+                             .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+                    files.Add((file, path));
+            }
             else if (File.Exists(path))
-                files.Add(path);
+            {
+                files.Add((path, Path.GetDirectoryName(path)!));
+            }
         }
 
         if (files.Count == 0) return;
@@ -885,11 +937,6 @@ public partial class MainWindow
                     $"'{newPath}' already exists in {owner.FileName}.\n\nOverwrite it?",
                     "Name collision", MessageBoxButton.OKCancel, MessageBoxImage.Question);
                 if (answer != MessageBoxResult.OK) continue;
-
-                var clash = _workspace.AllFiles.FirstOrDefault(f =>
-                    ReferenceEquals(f.Owner, node.Owner) &&
-                    VirtualPath.Comparer.Equals(f.Path, newPath));
-                if (clash is not null) _workspace.StageDelete(new[] { clash });
             }
 
             // A move keeps the leaf name and changes only the folder, which inside one archive is a
@@ -907,8 +954,13 @@ public partial class MainWindow
     /// The archive a folder belongs to, taken from any file under it. A folder that holds nothing is
     /// not a legal move target, which <see cref="CanMoveInto"/> already rejects.
     /// </summary>
-    private PkzArchive? ArchiveOfFolder(VfsNode folder) =>
-        folder.DescendantFiles().FirstOrDefault()?.Owner;
+    private LoadedArchive? ArchiveOfFolder(VfsNode folder)
+    {
+        var first = folder.DescendantFiles().FirstOrDefault();
+        return first is null
+            ? null
+            : _workspace.Archives.FirstOrDefault(a => ReferenceEquals(a.Archive, first.Owner));
+    }
 
     /// <summary>
     /// True when a move into this folder is legal: it must exist in exactly one archive, because a
@@ -920,10 +972,6 @@ public partial class MainWindow
         return owners.Count == 1 && owners[0] is not null;
     }
 
-    /// <summary>
-    /// Write one file to a temp folder so a drag onto Explorer has real content to copy. Returns the
-    /// temp path, or null when the file could not be written.
-    /// </summary>
     /// <summary>
     /// Write one file to the drag's staging folder so a drag onto Explorer has real content to copy.
     /// Returns the staged path, or null when the file could not be written.

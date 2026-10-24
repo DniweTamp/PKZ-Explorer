@@ -281,7 +281,8 @@ public sealed class CliRunner
                 level, confirmOverwrite: null, progress: VerboseProgress(request));
 
         foreach (var (path, error) in summary.Errors) _error($"error: {path}: {error}");
-        return FinishMutation(request, workspace, summary.Describe());
+        int code = FinishMutation(request, workspace, summary.Describe());
+        return summary.Errors.Count > 0 ? 1 : code;
     }
 
     private int RunDelete(CliRequest request)
@@ -308,11 +309,46 @@ public sealed class CliRunner
     private int RunRename(CliRequest request)
     {
         using var workspace = OpenWorkspace(request);
+        var restriction = ResolveTargetArchive(workspace, request, allowAny: true);
+
+        if (request.Entries.Count == 1 &&
+            VirtualPath.Normalize(request.Entries[0]) is { } folderPath &&
+            workspace.FindFolder(folderPath) is { Path.Length: > 0 } folder &&
+            !workspace.AllFiles.Any(f => VirtualPath.Comparer.Equals(f.Path, folderPath)))
+        {
+            var folderFiles = folder.DescendantFiles()
+                .Where(f => restriction is null || ReferenceEquals(f.Owner, restriction.Archive))
+                .ToList();
+            if (folderFiles.Count == 0)
+            {
+                _error(restriction is not null
+                    ? "error: no selected entry belongs to the archive named by --pkz"
+                    : "error: nothing matched the --entry selectors");
+                return 1;
+            }
+
+            if (request.DryRun)
+                return FinishMutation(request, workspace, $"would rename {folder.Path} to {request.Name}");
+
+            int folderRenamed = workspace.StageRename(folder, request.Name!, restriction);
+            return FinishMutation(request, workspace, $"renamed {folderRenamed} entr{(folderRenamed == 1 ? "y" : "ies")}");
+        }
+
         var nodes = SelectedOrAll(workspace, request);
         if (nodes.Count == 0)
         {
             _error("error: nothing matched the --entry selectors");
             return 1;
+        }
+
+        if (restriction is not null)
+        {
+            nodes = nodes.Where(n => ReferenceEquals(n.Owner, restriction.Archive)).ToList();
+            if (nodes.Count == 0)
+            {
+                _error("error: no selected entry belongs to the archive named by --pkz");
+                return 1;
+            }
         }
 
         // Renaming several entries at once onto one name cannot work, so the CLI takes exactly one.
@@ -327,7 +363,7 @@ public sealed class CliRunner
         if (request.DryRun)
             return FinishMutation(request, workspace, $"would rename {node.Path} to {request.Name}");
 
-        int renamed = workspace.StageRename(node, request.Name!);
+        int renamed = workspace.StageRename(node, request.Name!, restriction);
         return FinishMutation(request, workspace, $"renamed {renamed} entr{(renamed == 1 ? "y" : "ies")}");
     }
 

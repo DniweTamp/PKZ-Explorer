@@ -249,16 +249,16 @@ public class ThemedDialog : Window
             return;
         }
 
-        // Owner.Left/Top are the restored (normal-state) bounds, which is what WPF centres against.
-        // Centring on the live size instead would place the dialog wrongly when the owner is maximised.
         Rect bounds = Owner.WindowState == WindowState.Normal
             ? new Rect(Owner.Left, Owner.Top, Owner.ActualWidth, Owner.ActualHeight)
-            : Owner.RestoreBounds;
+            : new Rect(0, 0, Owner.ActualWidth, Owner.ActualHeight);
 
         if (bounds.IsEmpty || bounds.Width <= 0) return;
 
-        Left = bounds.Left + (bounds.Width - ActualWidth) / 2;
-        Top = bounds.Top + (bounds.Height - ActualHeight) / 2;
+        double w = !double.IsNaN(Width) && Width > 0 ? Width : ActualWidth;
+        double h = !double.IsNaN(Height) && Height > 0 ? Height : ActualHeight;
+        Left = bounds.Left + (bounds.Width - w) / 2;
+        Top = bounds.Top + (bounds.Height - h) / 2;
         WindowStartupLocation = WindowStartupLocation.Manual;
     }
 

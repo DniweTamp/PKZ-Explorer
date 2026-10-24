@@ -117,6 +117,7 @@ public sealed class PkzWorkspace : IDisposable
         _archives.Clear();
         _nodeIndex.Clear();
         _folderIndex.Clear();
+        _pathIndex.Clear();
         Root = VfsNode.Folder(string.Empty, string.Empty);
     }
 
@@ -134,7 +135,11 @@ public sealed class PkzWorkspace : IDisposable
             _folderIndex[folder.Path] = folder;
 
         foreach (var node in VfsTree.AllNodes(Root))
+        {
+            if (node.Owner is not null)
+                node.LoadedOwner = WrapperOf(node.Owner);
             _nodeIndex[node.Key] = node;
+        }
 
         // The tree only knows stored entries; this gives it the changes the user staged on top.
         ApplyStagedState();
@@ -182,7 +187,7 @@ public sealed class PkzWorkspace : IDisposable
                 // The row is always found by the path the entry was *loaded* under, because that is the
                 // row the tree was built with. A rename then moves that row rather than adding a second
                 // one beside it, which is what would otherwise leave the old name on screen.
-                var node = FindRow(loaded, staged.StoredPath);
+                var node = staged.StoredPathIsNew ? null : FindRow(loaded, staged.StoredPath);
 
                 if (staged.IsDeleted)
                 {
@@ -204,7 +209,7 @@ public sealed class PkzWorkspace : IDisposable
                     if (node is null) continue;
                 }
 
-                node.IsModified = true;
+                node.IsModified = !staged.IsNoOp;
                 node.Compression = staged.Compression;
                 // The bytes are carried on the row only when they replace the stored ones; a recompress
                 // keeps reading through to the archive.
@@ -224,17 +229,35 @@ public sealed class PkzWorkspace : IDisposable
         bool occupied = folder.ChildFilesCore.Any(f =>
             !ReferenceEquals(f, node) &&
             VirtualPath.Comparer.Equals(f.Path, newPath) &&
-            ReferenceEquals(WrapperOf(f.Owner), loaded));
+            ReferenceEquals(WrapperOf(f), loaded));
         if (occupied) return null;
 
-        node.Parent?.ChildFilesCore.Remove(node);
+        var oldParent = node.Parent;
+        string oldPath = node.Path;
+        oldParent?.ChildFilesCore.Remove(node);
+        if (oldParent is not null)
+        {
+            var remainingOld = oldParent.ChildFilesCore
+                .Where(f => VirtualPath.Comparer.Equals(f.Path, oldPath))
+                .ToList();
+            if (remainingOld.Count == 1) remainingOld[0].IsShadowed = false;
+        }
 
-        var moved = VfsNode.File(VfsNode.KeyForFile(newPath, null), newPath,
-            VirtualPath.GetName(newPath));
+        var existingAtNew = folder.ChildFilesCore
+            .Where(f => VirtualPath.Comparer.Equals(f.Path, newPath))
+            .ToList();
+        bool shadowed = existingAtNew.Count > 0;
+        string? suffix = shadowed ? loaded.FileName : null;
+        string display = VirtualPath.GetName(newPath) +
+                         (suffix is not null ? VfsNode.ShadowSuffix(suffix) : string.Empty);
+
+        var moved = VfsNode.File(VfsNode.KeyForFile(newPath, suffix), newPath, display);
         moved.Owner = loaded.Archive;
+        moved.LoadedOwner = loaded;
         moved.Entry = node.Entry;
         moved.Parent = folder;
-        moved.IsShadowed = node.IsShadowed;
+        moved.IsShadowed = shadowed;
+        foreach (var peer in existingAtNew) peer.IsShadowed = true;
         folder.ChildFilesCore.Add(moved);
 
         _nodeIndex.Remove(node.Key);
@@ -247,11 +270,11 @@ public sealed class PkzWorkspace : IDisposable
     {
         // A suffix only exists when the path is duplicated, so the plain key is tried first.
         var plain = _nodeIndex.GetValueOrDefault(VfsNode.KeyForFile(path, null));
-        if (plain is not null && ReferenceEquals(WrapperOf(plain.Owner), loaded)) return plain;
+        if (plain is not null && ReferenceEquals(WrapperOf(plain), loaded)) return plain;
 
         foreach (var node in AllFiles)
             if (VirtualPath.Comparer.Equals(node.Path, path) &&
-                ReferenceEquals(WrapperOf(node.Owner), loaded))
+                ReferenceEquals(WrapperOf(node), loaded))
                 return node;
         return null;
     }
@@ -265,6 +288,10 @@ public sealed class PkzWorkspace : IDisposable
         if (node.Parent is { } parent)
         {
             parent.ChildFilesCore.Remove(node);
+            var remaining = parent.ChildFilesCore
+                .Where(f => VirtualPath.Comparer.Equals(f.Path, node.Path))
+                .ToList();
+            if (remaining.Count == 1) remaining[0].IsShadowed = false;
         }
         else
         {
@@ -276,6 +303,12 @@ public sealed class PkzWorkspace : IDisposable
         }
 
         _nodeIndex.Remove(node.Key);
+        if (_pathIndex.TryGetValue(node.Path, out var rows))
+        {
+            rows.Remove(node);
+            if (rows.Count == 0) _pathIndex.Remove(node.Path);
+            else if (rows.Count == 1) rows[0].IsShadowed = false;
+        }
     }
 
     /// <summary>
@@ -288,12 +321,23 @@ public sealed class PkzWorkspace : IDisposable
     {
         var folder = VfsTree.EnsureFolder(Root, _folderIndex, path);
         bool clash = folder.ChildFilesCore.Any(f =>
-            VirtualPath.Comparer.Equals(f.Path, path) && ReferenceEquals(WrapperOf(f.Owner), loaded));
+            VirtualPath.Comparer.Equals(f.Path, path) && ReferenceEquals(WrapperOf(f), loaded));
         if (clash) return null;
 
-        var node = VfsNode.File(VfsNode.KeyForFile(path, null), path, VirtualPath.GetName(path));
+        var existingAtPath = folder.ChildFilesCore
+            .Where(f => VirtualPath.Comparer.Equals(f.Path, path))
+            .ToList();
+        bool shadowed = existingAtPath.Count > 0;
+        string? suffix = shadowed ? loaded.FileName : null;
+        string display = VirtualPath.GetName(path) +
+                         (suffix is not null ? VfsNode.ShadowSuffix(suffix) : string.Empty);
+
+        var node = VfsNode.File(VfsNode.KeyForFile(path, suffix), path, display);
         node.Owner = loaded.Archive;
+        node.LoadedOwner = loaded;
         node.Parent = folder;
+        node.IsShadowed = shadowed;
+        foreach (var peer in existingAtPath) peer.IsShadowed = true;
         folder.ChildFilesCore.Add(node);
         _nodeIndex[node.Key] = node;
         return node;
@@ -308,6 +352,9 @@ public sealed class PkzWorkspace : IDisposable
     /// </summary>
     private LoadedArchive? WrapperOf(PkzArchive? archive) =>
         archive is null ? null : _archives.FirstOrDefault(a => ReferenceEquals(a.Archive, archive));
+
+    private LoadedArchive? WrapperOf(VfsNode node) =>
+        node.LoadedOwner ?? WrapperOf(node.Owner);
 
     /// <summary>The row for a key, or null when it is gone.</summary>
     public VfsNode? FindByKey(string key) => _nodeIndex.GetValueOrDefault(key);
@@ -332,7 +379,7 @@ public sealed class PkzWorkspace : IDisposable
         foreach (var node in rows)
         {
             if (ignoreKey is not null && node.Key == ignoreKey) continue;
-            if (ReferenceEquals(WrapperOf(node.Owner), archive)) return true;
+            if (ReferenceEquals(WrapperOf(node), archive)) return true;
         }
         return false;
     }
@@ -375,7 +422,7 @@ public sealed class PkzWorkspace : IDisposable
             // user renames it.
             if (StoredPathOf(archive, node) is { } stored)
             {
-                archive.EntryFor(stored).Replace(data, compression, level);
+                archive.EntryFor(stored, node.Compression).Replace(data, compression, level);
                 archive.Prune(stored);
 
                 // The row is refreshed in place so the caller's node stays valid; a full rebuild would
@@ -391,14 +438,19 @@ public sealed class PkzWorkspace : IDisposable
         // A path the archive does not have. When an entry was deleted at this path earlier in the
         // session the stored entry still exists, so the add goes back into its place rather than
         // appearing twice.
-        var deletedEntry = archive.Edits.Values.FirstOrDefault(e =>
-            e.IsDeleted && VirtualPath.CompareEqual(e.CurrentPath, path));
+        var deletedKey = archive.Edits
+            .Where(kv => kv.Value.IsDeleted && !kv.Value.StoredPathIsNew &&
+                         (VirtualPath.CompareEqual(kv.Value.CurrentPath, path) ||
+                          VirtualPath.CompareEqual(kv.Value.StoredPath, path)))
+            .Select(kv => kv.Key)
+            .FirstOrDefault();
 
-        if (deletedEntry is not null)
+        if (deletedKey is not null)
         {
             // Bringing a deleted entry back means re-creating its row, which changes the shape of the
             // tree, so this is the one add that rebuilds.
-            deletedEntry.ReAdd(data, compression, level, existedInArchive: true);
+            var deletedEntry = archive.EntryFor(deletedKey);
+            deletedEntry.ReAdd(data, compression, level, existedInArchive: true, currentPath: path);
             Rebuild();
         }
         else
@@ -406,9 +458,8 @@ public sealed class PkzWorkspace : IDisposable
             // A genuinely new file. Only a new row is needed, so the tree is extended rather than
             // rebuilt: a rebuild per added file would cost O(entries) each and make a bulk add of a few
             // thousand files take minutes.
-            var staged = archive.EntryFor(path);
-            staged.ReAdd(data, compression, level, existedInArchive: false);
-            staged.StoredPathIsNew = true;
+            var staged = archive.CreateNewEntry(path);
+            staged.ReAdd(data, compression, level, existedInArchive: false, currentPath: path);
 
             var row = AddRow(archive, path);
             if (row is not null)
@@ -434,9 +485,10 @@ public sealed class PkzWorkspace : IDisposable
 
         // A row with no archive entry is either brand new or the result of a rename; both are found by
         // their current path in the staged state.
-        var match = archive.Edits.Values.FirstOrDefault(e =>
-            VirtualPath.CompareEqual(e.CurrentPath, node.Path));
-        return match?.StoredPath;
+        foreach (var (key, staged) in archive.Edits)
+            if (!staged.IsDeleted && VirtualPath.CompareEqual(staged.CurrentPath, node.Path))
+                return key;
+        return null;
     }
 
     /// <summary>The row for a path within one archive, or null.</summary>
@@ -444,7 +496,7 @@ public sealed class PkzWorkspace : IDisposable
     {
         if (!_pathIndex.TryGetValue(path, out var rows)) return null;
         foreach (var node in rows)
-            if (ReferenceEquals(WrapperOf(node.Owner), archive))
+            if (ReferenceEquals(WrapperOf(node), archive))
                 return node;
         return null;
     }
@@ -452,7 +504,7 @@ public sealed class PkzWorkspace : IDisposable
     /// <summary>Stage a recompress: the bytes stay as they are, the storage changes.</summary>
     public void StageRecompress(VfsNode node, EntryCompression compression, int level)
     {
-        if (node.Kind != VfsNodeKind.File || WrapperOf(node.Owner) is not { } archive) return;
+        if (node.Kind != VfsNodeKind.File || WrapperOf(node) is not { } archive) return;
         if (StoredPathOf(archive, node) is not { } stored) return;
 
         // The stored compression is needed to tell a real change from one that asks for the storage the
@@ -460,14 +512,14 @@ public sealed class PkzWorkspace : IDisposable
         var storedCompression = node.Entry?.Compression ?? archive.Archive.Find(stored)?.Compression
             ?? EntryCompression.None;
 
-        var staged = archive.EntryFor(stored);
+        var staged = archive.EntryFor(stored, storedCompression);
         staged.Recompress(compression, level, storedCompression);
         archive.Prune(stored);
 
         // The row is updated in place rather than by rebuilding the tree, so the caller's node stays
         // valid: a full rebuild would replace every node and leave the reference it passed in detached.
         node.Compression = staged.Compression;
-        node.IsModified = true;
+        node.IsModified = !staged.IsNoOp;
         RaiseChanged();
     }
 
@@ -475,9 +527,10 @@ public sealed class PkzWorkspace : IDisposable
     public byte[] ReadData(VfsNode node)
     {
         if (node.StagedData is not null) return node.StagedData;
-        if (node.Entry is null || node.Owner is null)
+        var owner = node.LoadedOwner?.Archive ?? node.Owner;
+        if (node.Entry is null || owner is null)
             throw new InvalidOperationException($"'{node.Path}' has no data to read");
-        return node.Owner.Extract(node.Entry, OodlePath);
+        return owner.Extract(node.Entry, OodlePath);
     }
 
     /// <summary>Stage a delete of exactly the rows given; folders take everything under them.</summary>
@@ -488,9 +541,10 @@ public sealed class PkzWorkspace : IDisposable
         var files = nodes.SelectMany(n => n.DescendantFiles()).Distinct().ToList();
         foreach (var node in files)
         {
-            if (WrapperOf(node.Owner) is not { } archive) continue;
+            if (WrapperOf(node) is not { } archive) continue;
             if (StoredPathOf(archive, node) is not { } stored) continue;
-            archive.EntryFor(stored).Delete();
+            archive.EntryFor(stored, node.Compression).Delete();
+            archive.Prune(stored);
             RemoveRow(node);
             removed++;
         }
@@ -507,7 +561,7 @@ public sealed class PkzWorkspace : IDisposable
     /// content keeps both, and renaming twice in a row simply moves the entry twice.
     /// </para>
     /// </summary>
-    public int StageRename(VfsNode node, string newName)
+    public int StageRename(VfsNode node, string newName, LoadedArchive? restriction = null)
     {
         if (VirtualPath.ValidateSegment(newName) is { } error)
             throw new ArgumentException(error, nameof(newName));
@@ -515,14 +569,24 @@ public sealed class PkzWorkspace : IDisposable
         int renamed = 0;
         if (node.Kind == VfsNodeKind.File)
         {
-            if (WrapperOf(node.Owner) is not { } archive) return 0;
+            if (WrapperOf(node) is not { } archive) return 0;
+            if (restriction is not null && !ReferenceEquals(archive, restriction)) return 0;
             if (StoredPathOf(archive, node) is not { } stored) return 0;
 
-            var entry = archive.EntryFor(stored);
+            var entry = archive.EntryFor(stored, node.Compression);
             var newPath = VirtualPath.WithName(entry.CurrentPath, newName);
             // Compared ordinally, so a case-only rename (Data.dat -> data.dat) is a real change rather
             // than being refused as a no-op.
             if (string.Equals(newPath, entry.CurrentPath, StringComparison.Ordinal)) return 0;
+
+            if (!VirtualPath.Comparer.Equals(newPath, entry.CurrentPath) &&
+                FindByPath(archive, newPath) is { } colliding &&
+                !ReferenceEquals(colliding, node) &&
+                StoredPathOf(archive, colliding) is { } collidingStored)
+            {
+                archive.EntryFor(collidingStored, colliding.Compression).Delete();
+                archive.Prune(collidingStored);
+            }
 
             entry.Rename(newPath);
             archive.Prune(stored);
@@ -537,12 +601,22 @@ public sealed class PkzWorkspace : IDisposable
             var files = node.DescendantFiles().ToList();
             foreach (var file in files)
             {
-                if (WrapperOf(file.Owner) is not { } archive) continue;
+                if (WrapperOf(file) is not { } archive) continue;
+                if (restriction is not null && !ReferenceEquals(archive, restriction)) continue;
                 if (StoredPathOf(archive, file) is not { } stored) continue;
 
-                var entry = archive.EntryFor(stored);
+                var entry = archive.EntryFor(stored, file.Compression);
                 var newPath = VirtualPath.RenameFolderSegment(entry.CurrentPath, node.Path, newFolderPath);
                 if (string.Equals(newPath, entry.CurrentPath, StringComparison.Ordinal)) continue;
+
+                if (!VirtualPath.Comparer.Equals(newPath, entry.CurrentPath) &&
+                    FindByPath(archive, newPath) is { } colliding &&
+                    !ReferenceEquals(colliding, file) &&
+                    StoredPathOf(archive, colliding) is { } collidingStored)
+                {
+                    archive.EntryFor(collidingStored, colliding.Compression).Delete();
+                    archive.Prune(collidingStored);
+                }
 
                 entry.Rename(newPath);
                 archive.Prune(stored);
@@ -563,14 +637,23 @@ public sealed class PkzWorkspace : IDisposable
     public void StageMove(VfsNode node, string newPath)
     {
         if (node.Kind != VfsNodeKind.File) return;
-        if (WrapperOf(node.Owner) is not { } archive) return;
+        if (WrapperOf(node) is not { } archive) return;
         if (StoredPathOf(archive, node) is not { } stored) return;
 
         newPath = VirtualPath.Normalize(newPath)
             ?? throw new ArgumentException("the destination path is empty", nameof(newPath));
 
-        var entry = archive.EntryFor(stored);
+        var entry = archive.EntryFor(stored, node.Compression);
         if (string.Equals(newPath, entry.CurrentPath, StringComparison.Ordinal)) return;
+
+        if (!VirtualPath.Comparer.Equals(newPath, entry.CurrentPath) &&
+            FindByPath(archive, newPath) is { } colliding &&
+            !ReferenceEquals(colliding, node) &&
+            StoredPathOf(archive, colliding) is { } collidingStored)
+        {
+            archive.EntryFor(collidingStored, colliding.Compression).Delete();
+            archive.Prune(collidingStored);
+        }
 
         entry.Rename(newPath);
         archive.Prune(stored);
@@ -598,7 +681,7 @@ public sealed class PkzWorkspace : IDisposable
         // Materialised first, because reverting a delete re-creates rows as it goes.
         foreach (var node in nodes.SelectMany(n => n.DescendantFiles()).Distinct().ToList())
         {
-            if (WrapperOf(node.Owner) is not { } archive) continue;
+            if (WrapperOf(node) is not { } archive) continue;
             if (StoredPathOf(archive, node) is not { } stored) continue;
             if (archive.Unstage(stored)) reverted = true;
         }
@@ -635,11 +718,12 @@ public sealed class PkzWorkspace : IDisposable
 
         for (int i = 0; i < targets.Count; i++)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var loaded = targets[i];
-            progress?.Invoke(new OperationProgress(i, targets.Count, $"Saving {loaded.FileName}"));
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
+                var loaded = targets[i];
+                progress?.Invoke(new OperationProgress(i, targets.Count, $"Saving {loaded.FileName}"));
+
                 // Every payload is read into memory while the handle is still open, because the archive
                 // is then streamed to disk and the write needs no access to the source file.
                 var packed = BuildArchiveEntries(loaded, (done, total, message) =>
@@ -675,11 +759,13 @@ public sealed class PkzWorkspace : IDisposable
             }
             catch (OperationCanceledException)
             {
+                Rebuild();
+                RaiseChanged();
                 throw;
             }
             catch (Exception ex)
             {
-                failures.Add((loaded.TargetPath, ex.Message));
+                failures.Add((targets[i].TargetPath, ex.Message));
             }
         }
 
@@ -698,7 +784,11 @@ public sealed class PkzWorkspace : IDisposable
     {
         try
         {
+            var previous = loaded.Archive;
             loaded.Archive = PkzArchive.Open(path);
+            foreach (var node in VfsTree.AllNodes(Root))
+                if (ReferenceEquals(node.LoadedOwner, loaded) || ReferenceEquals(node.Owner, previous))
+                    node.Owner = loaded.Archive;
         }
         catch (Exception)
         {
@@ -740,7 +830,7 @@ public sealed class PkzWorkspace : IDisposable
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (edits.TryGetValue(entry.Name, out var staged) && !staged.IsUntouched)
+            if (edits.TryGetValue(entry.Name, out var staged) && !staged.IsUntouched && !staged.StoredPathIsNew)
             {
                 if (staged.IsDeleted)
                 {
@@ -783,7 +873,7 @@ public sealed class PkzWorkspace : IDisposable
 
         // A staged entry with no stored counterpart is a brand-new file, so it goes on the end in the
         // order it was added.
-        foreach (var staged in edits.Values.Where(e => !e.IsUntouched && e.StoredPathIsNew))
+        foreach (var staged in edits.Values.Where(e => !e.IsUntouched && !e.IsDeleted && e.StoredPathIsNew))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var data = staged.Data ?? Array.Empty<byte>();
@@ -809,17 +899,27 @@ public sealed class PkzWorkspace : IDisposable
         foreach (var (loaded, path) in targets)
             loaded.TargetPath = path;
 
-        var outcome = Save(progress, cancellationToken);
+        try
+        {
+            var outcome = Save(progress, cancellationToken);
 
-        // A path that appears in the failure list did not get written, so that archive goes back to the
-        // file it came from. Every other archive keeps its new location, which is what makes a later
-        // plain Save write back to the Save As destination.
-        var failed = outcome.Failures.Select(f => f.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (var (loaded, path) in targets)
-            if (failed.Contains(path) && previous.TryGetValue(loaded, out var was))
-                loaded.TargetPath = was;
+            // A path that appears in the failure list did not get written, so that archive goes back to the
+            // file it came from. Every other archive keeps its new location, which is what makes a later
+            // plain Save write back to the Save As destination.
+            var failed = outcome.Failures.Select(f => f.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var (loaded, path) in targets)
+                if (failed.Contains(path) && previous.TryGetValue(loaded, out var was))
+                    loaded.TargetPath = was;
 
-        return outcome;
+            return outcome;
+        }
+        catch
+        {
+            foreach (var (loaded, _) in targets)
+                if (loaded.IsModified && previous.TryGetValue(loaded, out var was))
+                    loaded.TargetPath = was;
+            throw;
+        }
     }
 
     public void Dispose() => Clear();

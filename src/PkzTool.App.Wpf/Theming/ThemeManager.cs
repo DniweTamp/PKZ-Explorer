@@ -91,7 +91,7 @@ public static class ThemeManager
     {
         void Apply()
         {
-            if (!OperatingSystem.IsWindows() || window.IsLoaded == false) return;
+            if (!OperatingSystem.IsWindows()) return;
             var handle = new System.Windows.Interop.WindowInteropHelper(window).Handle;
             if (handle == IntPtr.Zero) return;
             int dark = IsDark ? 1 : 0;
@@ -108,7 +108,10 @@ public static class ThemeManager
 
         if (window.IsLoaded) Apply();
         if (TitleBarHooked.Add(window))
+        {
             window.SourceInitialized += (_, _) => Apply();
+            window.Closed += (s, _) => { if (s is Window w) TitleBarHooked.Remove(w); };
+        }
     }
 
     [DllImport("dwmapi.dll")]

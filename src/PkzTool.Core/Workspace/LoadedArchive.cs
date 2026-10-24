@@ -65,13 +65,31 @@ public sealed class LoadedArchive : IDisposable
     /// <summary>
     /// Get the staged state for an entry, creating an empty one when the entry has not been touched.
     /// </summary>
-    internal StagedEntry EntryFor(string storedPath)
+    internal StagedEntry EntryFor(string storedPath, EntryCompression? initialCompression = null)
     {
         if (!_edits.TryGetValue(storedPath, out var entry))
         {
-            entry = new StagedEntry(storedPath);
+            var stored = initialCompression
+                         ?? Archive.Find(storedPath)?.Compression
+                         ?? EntryCompression.None;
+            entry = new StagedEntry(storedPath, stored);
             _edits[storedPath] = entry;
         }
+        return entry;
+    }
+
+    /// <summary>
+    /// Create a staged entry for a brand-new file at <paramref name="path"/>, avoiding key collisions
+    /// when an existing entry originally loaded at <paramref name="path"/> has been renamed elsewhere.
+    /// </summary>
+    internal StagedEntry CreateNewEntry(string path)
+    {
+        if (_edits.TryGetValue(path, out var existing) && existing.StoredPathIsNew && existing.IsDeleted)
+            return existing;
+
+        string key = _edits.ContainsKey(path) ? $"new:{Guid.NewGuid():N}:{path}" : path;
+        var entry = new StagedEntry(path, EntryCompression.None) { StoredPathIsNew = true };
+        _edits[key] = entry;
         return entry;
     }
 
@@ -81,7 +99,9 @@ public sealed class LoadedArchive : IDisposable
     /// </summary>
     internal void Prune(string storedPath)
     {
-        if (_edits.TryGetValue(storedPath, out var entry) && entry.IsNoOp) _edits.Remove(storedPath);
+        if (_edits.TryGetValue(storedPath, out var entry) &&
+            (entry.IsNoOp || (entry.StoredPathIsNew && entry.IsDeleted)))
+            _edits.Remove(storedPath);
     }
 
     /// <summary>
@@ -111,11 +131,11 @@ public sealed class LoadedArchive : IDisposable
 /// </summary>
 public sealed class StagedEntry
 {
-    internal StagedEntry(string storedPath)
+    internal StagedEntry(string storedPath, EntryCompression storedCompression = EntryCompression.None)
     {
         StoredPath = storedPath;
         CurrentPath = storedPath;
-        Compression = EntryCompression.None;
+        Compression = storedCompression;
     }
 
     /// <summary>The path the entry had in the archive; this is the key the edit is filed under.</summary>
@@ -226,7 +246,8 @@ public sealed class StagedEntry
     /// the archive ever had this path, which decides whether the entry keeps its original position or is
     /// appended.
     /// </summary>
-    internal void ReAdd(byte[] data, EntryCompression compression, int level, bool existedInArchive)
+    internal void ReAdd(byte[] data, EntryCompression compression, int level, bool existedInArchive,
+        string? currentPath = null)
     {
         Data = data;
         Compression = compression;
@@ -234,7 +255,7 @@ public sealed class StagedEntry
         IsDeleted = false;
         IsReAdd = existedInArchive;
         StoredPathIsNew = !existedInArchive;
-        CurrentPath = existedInArchive ? StoredPath : CurrentPath;
+        CurrentPath = currentPath ?? (existedInArchive ? StoredPath : CurrentPath);
         Operations++;
     }
 
@@ -247,7 +268,7 @@ public sealed class StagedEntry
         if (IsDeleted) return $"delete {StoredPath}";
 
         var parts = new List<string>();
-        if (!VirtualPath.CompareEqual(CurrentPath, StoredPath)) parts.Add($"rename to {CurrentPath}");
+        if (!string.Equals(CurrentPath, StoredPath, StringComparison.Ordinal)) parts.Add($"rename to {CurrentPath}");
         if (HasNewData) parts.Add("replace");
         else if (Operations > 0) parts.Add("recompress");
         parts.Add(CompressionCodec.DisplayName(Compression));
@@ -255,5 +276,3 @@ public sealed class StagedEntry
         return $"{StoredPath}: {string.Join(", ", parts)}";
     }
 }
-
-

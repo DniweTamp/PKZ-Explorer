@@ -21,8 +21,9 @@ public static class VfsTree
     {
         var root = VfsNode.Folder(string.Empty, string.Empty);
         var folderIndex = new Dictionary<string, VfsNode>(VirtualPath.Comparer) { [string.Empty] = root };
-        // Which archive file names have already claimed each path, so later ones get the suffix.
-        var claimed = new Dictionary<string, HashSet<string>>(VirtualPath.Comparer);
+        // Which archive instances have already claimed each path, so later ones get the suffix even
+        // when two archives from different folders share a bare file name.
+        var claimed = new Dictionary<string, List<PkzArchive>>(VirtualPath.Comparer);
 
         foreach (var archive in archives)
         {
@@ -37,7 +38,7 @@ public static class VfsTree
                 bool firstOwner = !claimed.TryGetValue(path, out var owners);
                 if (firstOwner)
                 {
-                    owners = new HashSet<string>(VirtualPath.Comparer);
+                    owners = new List<PkzArchive>(1);
                     claimed[path] = owners;
                 }
 
@@ -45,8 +46,15 @@ public static class VfsTree
                 // The first archive to hold a path keeps the plain name; every later one is suffixed so
                 // the user can tell the rows apart and aim an edit at exactly one of them.
                 string? suffixOwner = firstOwner ? null : archive.FileName;
-                if (suffixOwner is not null) display += VfsNode.ShadowSuffix(suffixOwner);
-                owners!.Add(archive.FileName);
+                if (suffixOwner is not null)
+                {
+                    int sameNameCount = owners!.Skip(1).Count(a =>
+                        string.Equals(a.FileName, archive.FileName, StringComparison.OrdinalIgnoreCase));
+                    if (sameNameCount > 0)
+                        suffixOwner = $"{archive.FileName} ({sameNameCount + 1})";
+                    display += VfsNode.ShadowSuffix(suffixOwner);
+                }
+                owners!.Add(archive);
 
                 var node = VfsNode.File(VfsNode.KeyForFile(path, suffixOwner), path, display);
                 node.Owner = archive;
