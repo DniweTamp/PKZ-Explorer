@@ -117,3 +117,5 @@ publish-release.bat
 ```
 
 Produces a single framework-dependent `PKZ Explorer.exe` plus source and binary zips. The Oodle dll is never bundled.
+## Disclaimer
+This program includes ai-generated code.
